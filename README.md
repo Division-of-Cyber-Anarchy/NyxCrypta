@@ -1,24 +1,23 @@
 # NyxCrypta
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.7%2B-green.svg)
+![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
-NyxCrypta est une bibliothèque de cryptographie Python moderne et sophistiquée, conçue pour offrir une sécurité de niveau professionnel avec une interface simple et élégante.
+NyxCrypta est une bibliothèque de cryptographie Python qui combine le chiffrement asymétrique RSA et le chiffrement symétrique AES pour sécuriser vos données de manière efficace et simple.
 
 ## Caractéristiques
 
-- 🔒 **Chiffrement hybride** : Combine AES-256 et RSA-4096 pour une sécurité optimale
-- 🎯 **Authentification des données** : Utilisation de HMAC pour garantir l'intégrité
-- 🔑 **Gestion avancée des clés** : Dérivation sécurisée des clés avec PBKDF2
-- 🖼️ **Stéganographie intégrée** : Cachez vos données chiffrées dans des images
-- 📚 **API intuitive** : Facile à utiliser, difficile à mal utiliser
-- 🛡️ **Sécurité proactive** : Protection contre diverses attaques cryptographiques
+- 🔒 **Chiffrement hybride** : Combine AES-256 et RSA (2048 à 4096 bits)
+- 🎯 **Niveaux de sécurité configurables** : Standard, High, et Paranoid
+- 🔑 **Gestion des clés** : Génération et utilisation simples des paires de clés RSA
+- 📚 **Interface en ligne de commande intuitive**
+- 🛡️ **Sécurité proactive** : Vérifications de fichiers et de permissions intégrées
 
 ## Installation
 
 ```bash
-pip install nyxcrypta
+pip install NyxCrypta
 ```
 
 ## Guide rapide
@@ -28,6 +27,7 @@ pip install nyxcrypta
 ```bash
 nyxcrypta keygen -o ./keys
 ```
+Cette commande génère une paire de clés RSA et les sauvegarde dans le dossier spécifié.
 
 ### 2. Chiffrement d'un fichier
 
@@ -41,73 +41,86 @@ nyxcrypta encrypt -i secret.txt -o encrypted.nyx -k ./keys/public_key.pem
 nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem
 ```
 
-## Configuration avancée
+## Niveaux de sécurité
 
-NyxCrypta offre de nombreuses options de configuration pour les utilisateurs avancés. Consultez notre documentation complète pour plus de détails sur :
+NyxCrypta offre trois niveaux de sécurité :
 
-- Personnalisation des paramètres de dérivation de clés
-- Modes de chiffrement alternatifs
-- Optimisation des performances
-- Intégration avec d'autres systèmes de sécurité
+1. **STANDARD** (par défaut) : 
+   - RSA 2048 bits
+   - SHA-256 pour le padding OAEP
 
-## Paramètres secrets et modes avancés
+2. **HIGH** :
+   - RSA 3072 bits
+   - SHA-256 pour le padding OAEP
 
-NyxCrypta inclut des paramètres et modes supplémentaires non documentés pour les utilisateurs expérimentés. Ces fonctionnalités sont intentionnellement complexes et nécessitent une compréhension approfondie de la cryptographie pour être utilisées correctement.
+3. **PARANOID** :
+   - RSA 4096 bits
+   - SHA3-512 pour le hachage
 
-*Note : L'utilisation incorrecte des paramètres avancés peut compromettre la sécurité de vos données.*
+La sélection du niveau de sécurité se fait via l'option `--securitylevel` :
+```bash
+nyxcrypta --securitylevel 2 encrypt -i secret.txt -o encrypted.nyx -k ./keys/public_key.pem
+```
+
+## Implémentation technique
+
+- Utilisation d'AES-256 en mode CBC pour le chiffrement symétrique
+- Chiffrement de la clé AES avec RSA-OAEP
+- Génération sécurisée d'IV (Vecteur d'Initialisation) pour chaque opération
+- Gestion automatique du padding des données
 
 ## Meilleures pratiques de sécurité
 
 1. **Gestion des clés** : 
    - Stockez les clés privées de manière sécurisée
-   - Utilisez des mots de passe forts pour protéger les clés
-   - Effectuez des rotations régulières des clés
+   - Limitez l'accès aux fichiers de clés
 
-2. **Choix des paramètres** :
-   - Utilisez les paramètres par défaut sauf si vous avez une raison spécifique de les modifier
-   - Testez toujours la configuration complète avant le déploiement
+2. **Choix des fichiers** :
+   - Vérifiez toujours les chemins des fichiers d'entrée et de sortie
+   - Assurez-vous d'avoir les permissions nécessaires
 
-3. **Audit et journalisation** :
-   - Enregistrez toutes les opérations cryptographiques importantes
-   - Effectuez des audits réguliers de l'utilisation des clés
+3. **Niveau de sécurité** :
+   - Le niveau STANDARD est suffisant pour la plupart des usages
+   - Utilisez les niveaux supérieurs pour des besoins spécifiques
 
-## Exemples détaillés
-
-### Chiffrement avec authentification renforcée
+## Exemple Python
 
 ```python
 from nyxcrypta import NyxCrypta, SecurityLevel
 
-nx = NyxCrypta(security_level=SecurityLevel.PARANOID)
-nx.set_iteration_count(200000)  # Double le nombre d'itérations PBKDF2 par défaut
+# Création d'une instance avec un niveau de sécurité personnalisé
+nx = NyxCrypta(security_level=SecurityLevel.HIGH)
 
-private_key, public_key = nx.generate_rsa_keypair()
-encrypted = nx.encrypt_data(secret_data, public_key)
+# Génération et sauvegarde des clés
+nx.save_keys("./keys")
+
+# Chiffrement d'un fichier
+nx.encrypt_file("secret.txt", "encrypted.nyx", "./keys/public_key.pem")
+
+# Déchiffrement d'un fichier
+nx.decrypt_file("encrypted.nyx", "decrypted.txt", "./keys/private_key.pem")
 ```
 
-## FAQ
+## Dépendances
 
-**Q: Quelle est la différence entre les niveaux de sécurité ?**
-R: NyxCrypta offre différents niveaux de sécurité pour équilibrer performance et protection. Le niveau par défaut est suffisant pour la plupart des cas d'utilisation.
-
-**Q: Puis-je utiliser NyxCrypta pour [cas d'utilisation spécifique] ?**
-R: NyxCrypta est conçu pour être polyvalent. Contactez-nous pour discuter de cas d'utilisation spécifiques.
-
-**Q: Comment NyxCrypta se compare-t-il aux autres solutions ?**
-R: NyxCrypta utilise des algorithmes éprouvés tout en offrant des fonctionnalités uniques comme la stéganographie intégrée et des options avancées de configuration.
-
-## Philosophie du projet
-
-NyxCrypta a été développé avec les principes suivants :
-
-1. **Sécurité par défaut** : Configurations sûres par défaut
-2. **Flexibilité pour les experts** : Options avancées disponibles
-3. **Discrétion et élégance** : Opérations cryptographiques sophistiquées
+- cryptography>=3.3.2
+- argon2-cffi>=20.1.0
+- cffi>=1.0.0
 
 ## Licence
 
 NyxCrypta est distribué sous la licence MIT. Voir le fichier `LICENSE` pour plus de détails.
 
+## Auteurs
+
+Division of Cyber Anarchy (DCA)
+- Malic1tus
+- Calypt0sis
+- NyxCrypta
+- ViraL0x
+
+Contact : malic1tus@proton.me
+
 ---
 
-*"La sécurité n'est pas un produit, mais un processus." - Bruce Schneier*
+*"La simplicité est la sophistication suprême." - Léonard de Vinci*

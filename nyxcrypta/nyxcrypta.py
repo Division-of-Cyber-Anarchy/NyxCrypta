@@ -9,21 +9,30 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from enum import Enum
+import logging
+
+# Configurer le logging pour afficher les messages
+logging.basicConfig(level=logging.INFO)
+
 
 class SecurityLevel(Enum):
     STANDARD = 1
     HIGH = 2
     PARANOID = 3
 
+
 class NyxCrypta:
     def __init__(self, security_level=SecurityLevel.STANDARD):
         self.security_level = security_level
-        self.ph = PasswordHasher(time_cost=2, memory_cost=2**16, parallelism=1)
+        self.ph = PasswordHasher(time_cost=2, memory_cost=2 ** 16, parallelism=1)
 
     def generate_rsa_keypair(self):
+        key_size = 2048 if self.security_level == SecurityLevel.STANDARD else \
+            3072 if self.security_level == SecurityLevel.HIGH else 4096
+
         private_key = rsa.generate_private_key(
             public_exponent=65537,
-            key_size=4096
+            key_size=key_size
         )
         return private_key, private_key.public_key()
 
@@ -40,7 +49,7 @@ class NyxCrypta:
                     format=serialization.PrivateFormat.PKCS8,
                     encryption_algorithm=serialization.NoEncryption()
                 ))
-            print(f"Clé privée sauvegardée : {private_key_path}")
+            logging.info(f"Clé privée sauvegardée : {private_key_path}")
 
             # Sauvegarde de la clé publique
             public_key_path = os.path.join(output_dir, 'public_key.pem')
@@ -49,15 +58,19 @@ class NyxCrypta:
                     encoding=serialization.Encoding.PEM,
                     format=serialization.PublicFormat.SubjectPublicKeyInfo
                 ))
-            print(f"Clé publique sauvegardée : {public_key_path}")
+            logging.info(f"Clé publique sauvegardée : {public_key_path}")
 
             return True
         except Exception as e:
-            print(f"Erreur lors de la génération des clés : {str(e)}")
+            logging.error(f"Erreur lors de la génération des clés : {str(e)}")
             return False
 
     def encrypt_file(self, input_file, output_file, public_key_file):
         try:
+            # Vérifie si le fichier existe
+            self.file_exists(input_file)
+            self.file_exists(public_key_file)
+
             with open(public_key_file, 'rb') as key_file:
                 public_key = serialization.load_pem_public_key(key_file.read())
 
@@ -67,11 +80,15 @@ class NyxCrypta:
             aes_key = os.urandom(32)
             iv = os.urandom(16)
 
+            # Utiliser le bon algorithme de hachage selon le niveau de sécurité
+            hash_algorithm = hashes.SHA256() if self.security_level in [SecurityLevel.STANDARD,
+                                                                        SecurityLevel.HIGH] else hashes.SHA3_512()
+
             encrypted_key = public_key.encrypt(
                 aes_key,
                 padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                    algorithm=hashes.SHA256(),
+                    mgf=padding.MGF1(algorithm=hash_algorithm),
+                    algorithm=hash_algorithm,
                     label=None
                 )
             )
@@ -87,14 +104,18 @@ class NyxCrypta:
                 f.write(iv)
                 f.write(encrypted_data)
 
-            print(f"Fichier chiffré sauvegardé : {output_file}")
+            logging.info(f"Fichier chiffré sauvegardé : {output_file}")
             return True
         except Exception as e:
-            print(f"Erreur lors du chiffrement : {str(e)}")
+            logging.error(f"Erreur lors du chiffrement : {str(e)}")
             return False
 
     def decrypt_file(self, input_file, output_file, private_key_file):
         try:
+            # Vérifie si le fichier existe
+            self.file_exists(input_file)
+            self.file_exists(private_key_file)
+
             with open(private_key_file, 'rb') as key_file:
                 private_key = serialization.load_pem_private_key(
                     key_file.read(),
@@ -124,10 +145,10 @@ class NyxCrypta:
             with open(output_file, 'wb') as f:
                 f.write(data)
 
-            print(f"Fichier déchiffré sauvegardé : {output_file}")
+            logging.info(f"Fichier déchiffré sauvegardé : {output_file}")
             return True
         except Exception as e:
-            print(f"Erreur lors du déchiffrement : {str(e)}")
+            logging.error(f"Erreur lors du déchiffrement : {str(e)}")
             return False
 
     @staticmethod
@@ -142,6 +163,20 @@ class NyxCrypta:
         padding_length = padded_data[-1]
         return padded_data[:-padding_length]
 
+    @staticmethod
+    def file_exists(file_path):
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"Le fichier '{file_path}' n'existe pas.")
+        logging.info(f"Fichier trouvé : {file_path}")
+
+    @staticmethod
+    def check_permissions(file_path, mode='r'):
+        if not os.access(file_path, os.R_OK if mode == 'r' else os.W_OK):
+            raise PermissionError(
+                f"Vous n'avez pas les permissions nécessaires pour accéder à '{file_path}' en mode {mode}.")
+        logging.info(f"Permissions valides pour le fichier : {file_path}")
+
+
 def print_help():
     """Affiche l'aide personnalisée"""
     help_message = """
@@ -153,17 +188,19 @@ def print_help():
     decrypt       : Déchiffrer un fichier
 
     Utilisation :
-    python nyxcrypta.py <commande> [options]
+    nyxcrypta <commande> [options]
 
     Exemple :
-    python nyxcrypta.py keygen -o ./keys
-    python nyxcrypta.py encrypt -i fichier.txt -o fichier_chiffré.bin -k ./keys/public_key.pem
-    python nyxcrypta.py decrypt -i fichier_chiffré.bin -o fichier_déchiffré.txt -k ./keys/private_key.pem
+    nyxcrypta keygen -o ./keys
+    nyxcrypta encrypt -i fichier.txt -o fichier_chiffré.bin -k ./keys/public_key.pem
+    nyxcrypta decrypt -i fichier_chiffré.bin -o fichier_déchiffré.txt -k ./keys/private_key.pem
     """
     print(help_message)
 
 def main():
     parser = argparse.ArgumentParser(description="NyxCrypta - Outil de cryptographie Python")
+    parser.add_argument('--securitylevel', type=int, choices=[1, 2, 3], default=1, help=argparse.SUPPRESS)  # Ne pas afficher dans l'aide
+
     subparsers = parser.add_subparsers(dest='command', help='Commandes disponibles')
 
     keygen_parser = subparsers.add_parser('keygen', help='Générer une paire de clés')
@@ -178,6 +215,11 @@ def main():
     decrypt_parser.add_argument('-i', '--input', required=True, help='Fichier à déchiffrer')
     decrypt_parser.add_argument('-o', '--output', required=True, help='Fichier de sortie déchiffré')
     decrypt_parser.add_argument('-k', '--key', required=True, help='Chemin de la clé privée')
+
+    # Vérifie si l'argument -h ou --help a été passé
+    if '-h' in sys.argv or '--help' in sys.argv:
+        print_help()
+        sys.exit(0)
 
     args = parser.parse_args()
 
