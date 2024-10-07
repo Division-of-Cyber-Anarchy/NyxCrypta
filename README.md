@@ -1,6 +1,6 @@
 # NyxCrypta
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.7%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
@@ -39,35 +39,6 @@ nyxcrypta encrypt -i secret.txt -o encrypted.nyx -k ./keys/public_key.pem
 
 ```bash
 nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem
-```
-
-### 4. Utilisation de la stéganographie
-
-```bash
-# Cacher des données dans une image
-nyxcrypta hide -d encrypted.nyx -i original.png -o hidden.png
-
-# Extraire des données d'une image
-nyxcrypta extract -i hidden.png -o extracted.nyx
-```
-
-## Utilisation via l'API Python
-
-```python
-from nyxcrypta import NyxCrypta
-
-# Initialisation
-nx = NyxCrypta()
-
-# Génération de clés
-private_key, public_key = nx.generate_rsa_keypair()
-
-# Chiffrement
-secret_data = b"Données confidentielles"
-encrypted_package = nx.encrypt_data(secret_data, public_key)
-
-# Déchiffrement
-decrypted_data = nx.decrypt_data(encrypted_package, private_key)
 ```
 
 ## Configuration avancée
@@ -114,16 +85,6 @@ private_key, public_key = nx.generate_rsa_keypair()
 encrypted = nx.encrypt_data(secret_data, public_key)
 ```
 
-### Utilisation de la stéganographie avec chiffrement
-
-```python
-# Chiffrement + stéganographie en une seule opération
-nx.encrypt_and_hide(secret_data, public_key, "image.png", "output.png")
-
-# Extraction et déchiffrement
-decrypted = nx.extract_and_decrypt("output.png", private_key)
-```
-
 ## FAQ
 
 **Q: Quelle est la différence entre les niveaux de sécurité ?**
@@ -142,12 +103,6 @@ NyxCrypta a été développé avec les principes suivants :
 1. **Sécurité par défaut** : Configurations sûres par défaut
 2. **Flexibilité pour les experts** : Options avancées disponibles
 3. **Discrétion et élégance** : Opérations cryptographiques sophistiquées
-
-## Support et contribution
-
-- 📚 [Documentation complète](https://nyxcrypta.readthedocs.io/)
-- 🐛 [Signalement de bugs](https://github.com/nyxcrypta/issues)
-- 💬 [Forum communautaire](https://community.nyxcrypta.com)
 
 ## Licence
 
