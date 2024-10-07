@@ -1,12 +1,3 @@
-# Ce workflow utilise des actions qui ne sont pas certifiées par GitHub.
-# Elles sont fournies par un tiers et régies par
-# des conditions d’utilisation du service, une politique de confidentialité et un support distincts.
-# documentation en ligne.
-
-# GitHub recommande d’épingler les actions à un SHA de commit.
-# Pour obtenir une version plus récente, vous devez mettre à jour le SHA.
-# Vous pouvez également référencer une balise ou une branche, mais l’action peut changer sans avertissement.
-
 name: Upload Python Package
 
 on:
@@ -17,50 +8,26 @@ permissions:
   contents: read
 
 jobs:
-  release-build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout code
+      run: git clone https://github.com/Division-of-Cyber-Anarchy/NyxCrypta.git
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
+    - name: Set up Python
+      run: |
+        sudo apt-get update
+        sudo apt-get install python3 python3-pip
 
-      - name: Build release distributions
-        run: |
-          # NOTE: put your own distribution build steps here.
-          python -m pip install build
-          python -m build
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        pip install build twine
 
-      - name: Upload distributions
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-dists
-          path: dist/
+    - name: Build package
+      run: python3 -m build
 
-  pypi-publish:
-    runs-on: ubuntu-latest
-
-    needs:
-      - release-build
-
-    permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing
-      id-token: write
-
-    # Dedicated environments with protections for publishing are strongly recommended.
-    environment:
-      name: pypi
-      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
-      url: https://pypi.org/project/NyxCrypta/
-
-    steps:
-      - name: Retrieve release distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: release-dists
-          path: dist/
-
-      - name: Publish release distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Publish package
+      run: |
+        twine upload dist/* -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
