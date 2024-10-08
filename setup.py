@@ -5,7 +5,7 @@ with open('README.md', encoding='utf-8') as f:
 
 setup(
     name='NyxCrypta',
-    version='1.0.2',
+    version='1.1.0',
     author='DCA (Malic1tus, Calypt0sis, ViraL0x, NyxCrypta)',
     author_email='malic1tus@proton.me',
     description='Outil de cryptographie basé sur RSA et AES',

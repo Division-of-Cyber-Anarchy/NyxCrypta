@@ -1,6 +1,6 @@
 # NyxCrypta
 
-![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
@@ -120,6 +120,8 @@ Division of Cyber Anarchy (DCA)
 - ViraL0x
 
 Contact : malic1tus@proton.me nyxcrypta@proton.me calypt0sis@proton.me viral0x@proton.me
+
+Github : https://github.com/Division-of-Cyber-Anarchy/NyxCrypta
 
 ---
 
