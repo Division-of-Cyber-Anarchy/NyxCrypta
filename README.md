@@ -1,6 +1,6 @@
 # NyxCrypta
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
@@ -25,7 +25,7 @@ pip install NyxCrypta
 ### 1. Génération de clés
 
 ```bash
-nyxcrypta keygen -o ./keys
+nyxcrypta keygen -o ./keys -p "mot_de_passe_fort"
 ```
 Cette commande génère une paire de clés RSA et les sauvegarde dans le dossier spécifié.
 
@@ -38,7 +38,7 @@ nyxcrypta encrypt -i secret.txt -o encrypted.nyx -k ./keys/public_key.pem
 ### 3. Déchiffrement d'un fichier
 
 ```bash
-nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem
+nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem -p "mot_de_passe_fort"
 ```
 
 ## Niveaux de sécurité
@@ -55,7 +55,7 @@ NyxCrypta offre trois niveaux de sécurité :
 
 3. **PARANOID** :
    - RSA 4096 bits
-   - SHA3-512 pour le hachage
+   - SHA-256 pour le padding OAEP
 
 La sélection du niveau de sécurité se fait via l'option `--securitylevel` :
 ```bash
@@ -88,17 +88,16 @@ nyxcrypta --securitylevel 2 encrypt -i secret.txt -o encrypted.nyx -k ./keys/pub
 ```python
 from nyxcrypta import NyxCrypta, SecurityLevel
 
-# Création d'une instance avec un niveau de sécurité personnalisé
-nx = NyxCrypta(security_level=SecurityLevel.HIGH)
+# Initialisation
+nx = NyxCrypta(SecurityLevel.HIGH)
+password = "mot_de_passe_fort"
 
-# Génération et sauvegarde des clés
-nx.save_keys("./keys")
+# Génération des clés
+nx.save_keys("./keys", password)
 
-# Chiffrement d'un fichier
+# Chiffrement et déchiffrement
 nx.encrypt_file("secret.txt", "encrypted.nyx", "./keys/public_key.pem")
-
-# Déchiffrement d'un fichier
-nx.decrypt_file("encrypted.nyx", "decrypted.txt", "./keys/private_key.pem")
+nx.decrypt_file("encrypted.nyx", "decrypted.txt", "./keys/private_key.pem", password)
 ```
 
 ## Dépendances

@@ -174,7 +174,7 @@ class NyxCrypta:
 
 def print_help():
     help_message = """
-NyxCrypta v1.1.0 - Outil de cryptographie Python
+NyxCrypta v1.1.1 - Outil de cryptographie Python
 
 Usage:
   nyxcrypta <commande> [options]
@@ -201,7 +201,7 @@ Exemples:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NyxCrypta v1.1.0 - Outil de cryptographie Python")
+    parser = argparse.ArgumentParser(description="NyxCrypta v1.1.1 - Outil de cryptographie Python")
     parser.add_argument('--securitylevel', type=int, choices=[1, 2, 3], default=1,
                         help="Niveau de sécurité (1=Standard, 2=High, 3=Paranoid)")
 
