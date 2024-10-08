@@ -119,7 +119,7 @@ Division of Cyber Anarchy (DCA)
 - NyxCrypta
 - ViraL0x
 
-Contact : malic1tus@proton.me
+Contact : malic1tus@proton.me nyxcrypta@proton.me calypt0sis@proton.me viral0x@proton.me
 
 ---
 
