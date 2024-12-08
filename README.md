@@ -47,7 +47,7 @@ nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem -p
 nyxcrypta encryptdata -d "mes données secrètes" -k ./keys/public_key.pem
 ```
 
-### 4. Déchiffrement de données
+### 5. Déchiffrement de données
 
 ```bash
 nyxcrypta decryptdata -d "023gna5donnéescryptées" -k ./keys/private_key.pem -p "mot_de_passe_fort"
