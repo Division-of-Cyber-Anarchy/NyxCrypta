@@ -163,6 +163,83 @@ class NyxCrypta:
             logging.error(f"Erreur lors du déchiffrement : {str(e)}")
             return False
 
+    def encrypt_data(self, data, public_key_file):
+        try:
+            # Charger la clé publique depuis le fichier PEM
+            with open(public_key_file, 'rb') as key_file:
+                public_key = serialization.load_pem_public_key(key_file.read())
+
+            # Vérification si la clé chargée est bien un objet RSAPublicKey
+            if not isinstance(public_key, rsa.RSAPublicKey):
+                raise TypeError("La clé publique chargée n'est pas un objet RSAPublicKey")
+
+            # Génération de la clé AES et du nonce
+            aes_key = AESGCM.generate_key(bit_length=256)
+            aesgcm = AESGCM(aes_key)
+            nonce = os.urandom(12)
+
+            # Chiffrement de la clé AES avec RSA
+            hash_algorithm = self.get_hash_algorithm()
+            encrypted_key = public_key.encrypt(
+                aes_key,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hash_algorithm),
+                    algorithm=hash_algorithm,
+                    label=None
+                )
+            )
+
+            # Chiffrement des données avec AES-GCM
+            encrypted_data = aesgcm.encrypt(nonce, data, None)
+
+            # Retourner les données chiffrées sous forme binaire
+            result = struct.pack('<B', self.version) + struct.pack('<I', len(encrypted_key)) + encrypted_key + nonce + encrypted_data
+            return result.hex()
+
+        except Exception as e:
+            logging.error(f"Erreur lors du chiffrement des données : {str(e)}")
+            return None
+
+    def decrypt_data(self, encrypted_data, private_key_file, password):
+        try:
+            # Chargement de la clé privée avec mot de passe
+            with open(private_key_file, 'rb') as key_file:
+                private_key = serialization.load_pem_private_key(
+                    key_file.read(),
+                    password=password.encode()
+                )
+
+            # Extraction des informations du format chiffré
+            version = struct.unpack('<B', encrypted_data[:1])[0]
+            if version != self.version:
+                raise ValueError(f"Version de format non supportée : {version}")
+
+            key_size = struct.unpack('<I', encrypted_data[1:5])[0]
+            encrypted_key = encrypted_data[5:5 + key_size]
+            nonce = encrypted_data[5 + key_size:17 + key_size]
+            encrypted_data = encrypted_data[17 + key_size:]
+
+            # Déchiffrement de la clé AES
+            hash_algorithm = self.get_hash_algorithm()
+            aes_key = private_key.decrypt(
+                encrypted_key,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hash_algorithm),
+                    algorithm=hash_algorithm,
+                    label=None
+                )
+            )
+
+            # Déchiffrement des données
+            aesgcm = AESGCM(aes_key)
+            data = aesgcm.decrypt(nonce, encrypted_data, None)
+
+            return data
+
+        except Exception as e:
+            logging.error(f"Erreur lors du déchiffrement des données : {str(e)}")
+            return None
+
     @staticmethod
     def file_exists(file_path):
         if not os.path.isfile(file_path):
@@ -183,6 +260,8 @@ Commandes:
   keygen   Générer une paire de clés
   encrypt  Chiffrer un fichier
   decrypt  Déchiffrer un fichier
+  encryptdata  Chiffrer des données brutes
+  decryptdata  Déchiffrer des données brutes
 
 Options globales:
   --securitylevel  Niveau de sécurité (1=Standard, 2=High, 3=Paranoid) [défaut: 1]
@@ -196,12 +275,18 @@ Exemples:
 
   Déchiffrer un fichier:
     nyxcrypta decrypt -i fichier.enc -o fichier.txt -k ./keys/private_key.pem -p "mot_de_passe_fort"
+    
+  Chiffrer des données:
+    nyxcrypta encryptdata -d "Voici des données à chiffrer." -k ./keys/public_key.pem
+    
+  Déchiffrer des données:
+    nyxcrypta decryptdata -d "données_chiffrées" -k ./keys/private_key.pem -p "mot_de_passe_fort"
     """
     print(help_message)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NyxCrypta v1.1.1 - Outil de cryptographie Python")
+    parser = argparse.ArgumentParser(description="NyxCrypta v1.2.0 - Outil de cryptographie Python")
     parser.add_argument('--securitylevel', type=int, choices=[1, 2, 3], default=1,
                         help="Niveau de sécurité (1=Standard, 2=High, 3=Paranoid)")
 
@@ -225,30 +310,50 @@ def main():
     decrypt_parser.add_argument('-k', '--key', required=True, help='Chemin de la clé privée')
     decrypt_parser.add_argument('-p', '--password', required=True, help='Mot de passe de la clé privée')
 
+    # encryptdata
+    encryptdata_parser = subparsers.add_parser('encryptdata', help='Chiffrer des données brutes')
+    encryptdata_parser.add_argument('-d', '--data', required=True, help='Données à chiffrer')
+    encryptdata_parser.add_argument('-k', '--key', required=True, help='Chemin de la clé publique')
+
+    # decryptdata
+    decryptdata_parser = subparsers.add_parser('decryptdata', help='Déchiffrer des données brutes')
+    decryptdata_parser.add_argument('-d', '--data', required=True, help='Données à déchiffrer')
+    decryptdata_parser.add_argument('-k', '--key', required=True, help='Chemin de la clé privée')
+    decryptdata_parser.add_argument('-p', '--password', required=True, help='Mot de passe de la clé privée')
+
     if len(sys.argv) == 1 or '-h' in sys.argv or '--help' in sys.argv:
         print_help()
         sys.exit(0)
-
     args = parser.parse_args()
-
     if not args.command:
         print("Erreur : Aucune commande fournie.")
         print_help()
         sys.exit(1)
 
-    nx = NyxCrypta(SecurityLevel(args.securitylevel))
+    # Création de l'instance de NyxCrypta
+    nyxcrypta = NyxCrypta(SecurityLevel(args.securitylevel))
 
     try:
         if args.command == 'keygen':
-            nx.save_keys(args.output, args.password)
+            nyxcrypta.save_keys(args.output, args.password)
         elif args.command == 'encrypt':
-            nx.encrypt_file(args.input, args.output, args.key)
+            nyxcrypta.encrypt_file(args.input, args.output, args.key)
         elif args.command == 'decrypt':
-            nx.decrypt_file(args.input, args.output, args.key, args.password)
+            nyxcrypta.decrypt_file(args.input, args.output, args.key, args.password)
+        elif args.command == 'encryptdata':
+            data = args.data.encode('utf-8')
+            encrypted_data = nyxcrypta.encrypt_data(data, args.key)
+            if encrypted_data:
+                print("Données chiffrées :", encrypted_data)
+        elif args.command == 'decryptdata':
+            encrypted_data = bytes.fromhex(args.data)  # Données sous forme hexadécimale
+            decrypted_data = nyxcrypta.decrypt_data(encrypted_data, args.key, args.password)
+            if decrypted_data:
+                print("Données déchiffrées :", decrypted_data.decode('utf-8'))
     except Exception as e:
         logging.error(f"Erreur : {str(e)}")
         sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

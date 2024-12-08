@@ -1,6 +1,6 @@
 # NyxCrypta
 
-![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
@@ -39,6 +39,18 @@ nyxcrypta encrypt -i secret.txt -o encrypted.nyx -k ./keys/public_key.pem
 
 ```bash
 nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem -p "mot_de_passe_fort"
+```
+
+### 4. Chiffrement de données
+
+```bash
+nyxcrypta encryptdata -d "mes données secrètes" -k ./keys/public_key.pem
+```
+
+### 4. Déchiffrement de données
+
+```bash
+nyxcrypta decryptdata -d "023gna5donnéescryptées" -k ./keys/private_key.pem -p "mot_de_passe_fort"
 ```
 
 ## Niveaux de sécurité
@@ -98,6 +110,8 @@ nx.save_keys("./keys", password)
 # Chiffrement et déchiffrement
 nx.encrypt_file("secret.txt", "encrypted.nyx", "./keys/public_key.pem")
 nx.decrypt_file("encrypted.nyx", "decrypted.txt", "./keys/private_key.pem", password)
+nx.encryptdata("données secrètes".encode("utf-8"), "./keys/public_key.pem")
+nx.decryptdata(bytes.fromhex("023gna5donnéescryptées"), "./keys/private_key.pem", password)
 ```
 
 ## Dépendances
