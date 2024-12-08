@@ -251,7 +251,7 @@ class NyxCrypta:
 
 def print_help():
     help_message = """
-NyxCrypta v1.1.1 - Outil de cryptographie Python
+NyxCrypta v1.2.0 - Outil de cryptographie Python
 
 Usage:
   nyxcrypta <commande> [options]
