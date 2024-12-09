@@ -110,8 +110,8 @@ nx.save_keys("./keys", password)
 # Chiffrement et déchiffrement
 nx.encrypt_file("secret.txt", "encrypted.nyx", "./keys/public_key.pem")
 nx.decrypt_file("encrypted.nyx", "decrypted.txt", "./keys/private_key.pem", password)
-nx.encryptdata("données secrètes".encode("utf-8"), "./keys/public_key.pem")
-nx.decryptdata(bytes.fromhex("023gna5donnéescryptées"), "./keys/private_key.pem", password)
+nx.encrypt_data("données secrètes".encode("utf-8"), "./keys/public_key.pem")
+nx.decrypt_data(bytes.fromhex("023gna5donnéescryptées"), "./keys/private_key.pem", password)
 ```
 
 ## Dépendances
