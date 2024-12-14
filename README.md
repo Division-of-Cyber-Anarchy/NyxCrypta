@@ -20,9 +20,9 @@ NyxCrypta is a Python cryptography library that combines asymmetric RSA encrypti
 pip install NyxCrypta
 ```
 
-## Guide rapide
+## Quick guide
 
-### 1. Génération de clés
+### 1. key generation
 
 ```bash
 nyxcrypta keygen -o ./keys -p "mot_de_passe_fort"
