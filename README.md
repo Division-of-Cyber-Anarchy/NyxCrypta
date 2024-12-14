@@ -4,15 +4,15 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
-NyxCrypta est une bibliothèque de cryptographie Python qui combine le chiffrement asymétrique RSA et le chiffrement symétrique AES pour sécuriser vos données de manière efficace et simple.
+NyxCrypta is a Python cryptography library that combines asymmetric RSA encryption and symmetric AES encryption to secure your data efficiently and easily.
 
-## Caractéristiques
+## Features
 
-- 🔒 **Chiffrement hybride** : Combine AES-256 et RSA (2048 à 4096 bits)
-- 🎯 **Niveaux de sécurité configurables** : Standard, High, et Paranoid
-- 🔑 **Gestion des clés** : Génération et utilisation simples des paires de clés RSA
-- 📚 **Interface en ligne de commande intuitive**
-- 🛡️ **Sécurité proactive** : Vérifications de fichiers et de permissions intégrées
+- 🔒 **Hybrid encryption**: Combines AES-256 and RSA (2048 to 4096 bits)
+- 🎯 **Configurable security levels**: Standard, High, and Paranoid
+- 🔑 **Key management**: Simple generation and use of RSA key pairs
+- 📚 **Intuitive** command-line interface
+- 🛡️ **Proactive security**: integrated file and permissions checks
 
 ## Installation
 
