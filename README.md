@@ -22,120 +22,125 @@ pip install NyxCrypta
 
 ## Quick guide
 
-### 1. key generation
+### 1. Key generation
 
 ```bash
-nyxcrypta keygen -o ./keys -p "mot_de_passe_fort"
+nyxcrypta keygen -o ./keys -p "my_strong_password"
 ```
-Cette commande génère une paire de clés RSA et les sauvegarde dans le dossier spécifié.
+This command generates a pair of RSA keys and saves them in the specified folder.
 
-### 2. Chiffrement d'un fichier
+### 2. File encryption
 
 ```bash
 nyxcrypta encrypt -i secret.txt -o encrypted.nyx -k ./keys/public_key.pem
 ```
 
-### 3. Déchiffrement d'un fichier
+### 3. File decryption
 
 ```bash
-nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem -p "mot_de_passe_fort"
+nyxcrypta decrypt -i encrypted.nyx -o decrypted.txt -k ./keys/private_key.pem -p "my_strong_password"
 ```
 
-### 4. Chiffrement de données
+### 4. Data encryption
 
 ```bash
-nyxcrypta encryptdata -d "mes données secrètes" -k ./keys/public_key.pem
+nyxcrypta encryptdata -d "my data" -k ./keys/public_key.pem
 ```
 
-### 5. Déchiffrement de données
+### 5. Data decryption
 
 ```bash
-nyxcrypta decryptdata -d "023gna5donnéescryptées" -k ./keys/private_key.pem -p "mot_de_passe_fort"
+nyxcrypta decryptdata -d "006bd6203029" -k ./keys/private_key.pem -p "my_stong_password"
 ```
 
-## Niveaux de sécurité
+## Security levels
 
-NyxCrypta offre trois niveaux de sécurité :
+NyxCrypta offers three levels of security:
 
-1. **STANDARD** (par défaut) : 
+1. **STANDARD** (default) : 
    - RSA 2048 bits
-   - SHA-256 pour le padding OAEP
+   - SHA-256 for OAEP padding
 
 2. **HIGH** :
    - RSA 3072 bits
-   - SHA-256 pour le padding OAEP
+   - SHA-256 for OAEP padding
 
-3. **PARANOID** :
+3. **PARANOID**:
    - RSA 4096 bits
-   - SHA-256 pour le padding OAEP
+   - SHA-256 for OAEP padding
 
-La sélection du niveau de sécurité se fait via l'option `--securitylevel` :
+The security level is selected via the `--securitylevel` option:
 ```bash
 nyxcrypta --securitylevel 2 encrypt -i secret.txt -o encrypted.nyx -k ./keys/public_key.pem
 ```
 
-## Implémentation technique
+## Technical implementation
 
-- Utilisation d'AES-256 en mode CBC pour le chiffrement symétrique
-- Chiffrement de la clé AES avec RSA-OAEP
-- Génération sécurisée d'IV (Vecteur d'Initialisation) pour chaque opération
-- Gestion automatique du padding des données
+- Use of AES-256 in CBC mode for symmetrical encryption
+- AES key encryption with RSA-OAEP
+- Secure generation of IV (Initialization Vector) for each operation
+- Automatic data padding management
 
-## Meilleures pratiques de sécurité
+## Best security practices
 
-1. **Gestion des clés** : 
-   - Stockez les clés privées de manière sécurisée
-   - Limitez l'accès aux fichiers de clés
+1. **Key management** : 
+   - Store private keys securely
+   - Limit access to key files
 
-2. **Choix des fichiers** :
-   - Vérifiez toujours les chemins des fichiers d'entrée et de sortie
-   - Assurez-vous d'avoir les permissions nécessaires
+2. **File selection**:
+   - Always check input and output file paths
+   - Make sure you have the necessary permissions
 
-3. **Niveau de sécurité** :
-   - Le niveau STANDARD est suffisant pour la plupart des usages
-   - Utilisez les niveaux supérieurs pour des besoins spécifiques
+3. **Security level** :
+   - The STANDARD level is sufficient for most uses.
+   - Use higher levels for specific needs
 
-## Exemple Python
+## Python example
 
 ```python
 from nyxcrypta import NyxCrypta, SecurityLevel
 
-# Initialisation
+# initialization
 nx = NyxCrypta(SecurityLevel.HIGH)
-password = "mot_de_passe_fort"
+password = "my_strong_password"
 
-# Génération des clés
+# Keys generation
 nx.save_keys("./keys", password)
 
-# Chiffrement et déchiffrement
+# Encryption & Decryption
 nx.encrypt_file("secret.txt", "encrypted.nyx", "./keys/public_key.pem")
 nx.decrypt_file("encrypted.nyx", "decrypted.txt", "./keys/private_key.pem", password)
 nx.encrypt_data("données secrètes".encode("utf-8"), "./keys/public_key.pem")
 nx.decrypt_data(bytes.fromhex("023gna5donnéescryptées"), "./keys/private_key.pem", password)
 ```
 
-## Dépendances
+## Dependencies
 
 - cryptography>=3.3.2
 - argon2-cffi>=20.1.0
 - cffi>=1.0.0
 
-## Licence
+## License
 
-NyxCrypta est distribué sous la licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+NyxCrypta is distributed under the MIT license. See the `LICENSE` file for more details.
 
-## Auteurs
+## Authors
 
 Division of Cyber Anarchy (DCA)
-- Malic1tus
-- Calypt0sis
-- NyxCrypta
-- ViraL0x
+- [Malic1tus]
+- [Calypt0sis]
+- [NyxCrypta]
+- [ViraL0x]
 
 Contact : malic1tus@proton.me nyxcrypta@proton.me calypt0sis@proton.me viral0x@proton.me
 
-Github : https://github.com/Division-of-Cyber-Anarchy/NyxCrypta
+Github : https://github.com/Division-of-Cyber-Anarchy/
 
 ---
 
-*"La simplicité est la sophistication suprême." - Léonard de Vinci*
+*Simplicity is the ultimate sophistication. - Leonardo da Vinci*
+
+[Malic1tus]: <https://github.com/malic1tus>
+[Calypt0sis]: <https://github.com/calypt0sis>
+[NyxCrypta]: <https://github.com/nyxcrypta>
+[Viral0x]: <https://github.com/viral0x>
