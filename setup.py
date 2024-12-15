@@ -5,18 +5,18 @@ with open('README.md', encoding='utf-8') as f:
 
 setup(
     name='NyxCrypta',
-    version='1.2.0',
+    version='1.2.1',
     author='DCA (Malic1tus, Calypt0sis, ViraL0x, NyxCrypta)',
     author_email='malic1tus@proton.me',
-    description='Outil de cryptographie basé sur RSA et AES',
+    description='Cryptography tool based on RSA and AES',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/Division-of-Cyber-Anarchy/NyxCrypta',
     packages=find_packages(),
     install_requires=[
-        'cryptography>=3.3.2',  # Spécifier une version stable minimale
-        'argon2-cffi>=20.1.0',  # Ajout de la dépendance correcte
-        'cffi>=1.0.0',          # Prendre en compte la dépendance de argon2-cffi
+        'cryptography>=3.3.2',
+        'argon2-cffi>=20.1.0',
+        'cffi>=1.0.0',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
