@@ -4,7 +4,7 @@ with open('README.md', encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
-    name='NyxCrypta',
+    name='nyxcrypta',
     version='1.2.1',
     author='DCA (Malic1tus, Calypt0sis, ViraL0x, NyxCrypta)',
     author_email='malic1tus@proton.me',
