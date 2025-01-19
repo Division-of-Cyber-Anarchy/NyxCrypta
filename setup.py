@@ -5,7 +5,7 @@ with open('README.md', encoding='utf-8') as f:
 
 setup(
     name='nyxcrypta',
-    version='1.2.1',
+    version='1.3.0',
     author='DCA (Malic1tus, Calypt0sis, ViraL0x, NyxCrypta)',
     author_email='malic1tus@proton.me',
     description='Cryptography tool based on RSA and AES',
@@ -26,7 +26,7 @@ setup(
     python_requires='>=3.10',
     entry_points={
         'console_scripts': [
-            'nyxcrypta=nyxcrypta.nyxcrypta:main',
+            'nyxcrypta=nyxcrypta.main:main',
         ],
     },
 )

@@ -1,25 +1,12 @@
-#!/usr/bin/env python3
-
-import argparse
 import os
-import sys
 import struct
 from argon2 import PasswordHasher
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from enum import Enum
 import logging
-
-# Logging configuration
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-
-class SecurityLevel(Enum):
-    STANDARD = 1  # RSA 2048
-    HIGH = 2  # RSA 3072
-    PARANOID = 3  # RSA 4096
-
+from .security import SecurityLevel
+from .utils import file_exists
 
 class NyxCrypta:
     def __init__(self, security_level=SecurityLevel.STANDARD):
@@ -239,121 +226,3 @@ class NyxCrypta:
         except Exception as e:
             logging.error(f"Data decryption error : {str(e)}")
             return None
-
-    @staticmethod
-    def file_exists(file_path):
-        if not os.path.isfile(file_path):
-            raise FileNotFoundError(f"The file '{file_path}' does not exist.")
-        if not os.access(file_path, os.R_OK):
-            raise PermissionError(f"Insufficient permission to read '{file_path}'.")
-        logging.debug(f"Successful file verification : {file_path}")
-
-
-def print_help():
-    help_message = """
-NyxCrypta v1.2.1 - Python cryptography tool
-
-Usage:
-  nyxcrypta <command> [options]
-
-Commands:
-  keygen   Generate a key pair
-  encrypt  Encrypting a file
-  decrypt  Decrypting a file
-  encryptdata  Encrypting raw data
-  decryptdata  Decrypting raw data
-
-Global options:
-  --securitylevel  Security level (1=Standard, 2=High, 3=Paranoid) [default: 1]
-
-Examples:
-  Key generation:
-    nyxcrypta keygen -o ./keys -p "my_strong_password"
-
-  File encryption:
-    nyxcrypta encrypt -i file.txt -o file.nyx -k ./keys/public_key.pem
-
-  File decryption:
-    nyxcrypta decrypt -i file.nyx -o file.txt -k ./keys/private_key.pem -p "my_strong_password"
-    
-  Data encryption:
-    nyxcrypta encryptdata -d "My RAW data" -k ./keys/public_key.pem
-    
-  Data decryption:
-    nyxcrypta decryptdata -d "0203be021" -k ./keys/private_key.pem -p "my_strong_password"
-    """
-    print(help_message)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="NyxCrypta v1.2.1 - Python cryptography tool")
-    parser.add_argument('--securitylevel', type=int, choices=[1, 2, 3], default=1,
-                        help="Security Level (1=Standard, 2=High, 3=Paranoid)")
-
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
-
-    # keygen
-    keygen_parser = subparsers.add_parser('keygen', help='Generate a key pair')
-    keygen_parser.add_argument('-o', '--output', required=True, help='Output folder for keys')
-    keygen_parser.add_argument('-p', '--password', required=True, help='Password for private key')
-
-    # encrypt
-    encrypt_parser = subparsers.add_parser('encrypt', help='File encryption')
-    encrypt_parser.add_argument('-i', '--input', required=True, help='File to encrypt')
-    encrypt_parser.add_argument('-o', '--output', required=True, help='Encrypted output file')
-    encrypt_parser.add_argument('-k', '--key', required=True, help='Public key path')
-
-    # decrypt
-    decrypt_parser = subparsers.add_parser('decrypt', help='File decryption')
-    decrypt_parser.add_argument('-i', '--input', required=True, help='File to decrypt')
-    decrypt_parser.add_argument('-o', '--output', required=True, help='Decrypted output file')
-    decrypt_parser.add_argument('-k', '--key', required=True, help='Private key path')
-    decrypt_parser.add_argument('-p', '--password', required=True, help='Private key password')
-
-    # encryptdata
-    encryptdata_parser = subparsers.add_parser('encryptdata', help='RAW data encryption')
-    encryptdata_parser.add_argument('-d', '--data', required=True, help='Data to encrypt')
-    encryptdata_parser.add_argument('-k', '--key', required=True, help='Public key path')
-
-    # decryptdata
-    decryptdata_parser = subparsers.add_parser('decryptdata', help='RAW data decryption')
-    decryptdata_parser.add_argument('-d', '--data', required=True, help='Data to decrypt')
-    decryptdata_parser.add_argument('-k', '--key', required=True, help='Private key path')
-    decryptdata_parser.add_argument('-p', '--password', required=True, help='Private key password')
-
-    if len(sys.argv) == 1 or '-h' in sys.argv or '--help' in sys.argv:
-        print_help()
-        sys.exit(0)
-    args = parser.parse_args()
-    if not args.command:
-        print("Error : No command supplied.")
-        print_help()
-        sys.exit(1)
-
-    # NyxCrypta instance creation
-    nyxcrypta = NyxCrypta(SecurityLevel(args.securitylevel))
-
-    try:
-        if args.command == 'keygen':
-            nyxcrypta.save_keys(args.output, args.password)
-        elif args.command == 'encrypt':
-            nyxcrypta.encrypt_file(args.input, args.output, args.key)
-        elif args.command == 'decrypt':
-            nyxcrypta.decrypt_file(args.input, args.output, args.key, args.password)
-        elif args.command == 'encryptdata':
-            data = args.data.encode('utf-8')
-            encrypted_data = nyxcrypta.encrypt_data(data, args.key)
-            if encrypted_data:
-                print("Encrypted data :", encrypted_data)
-        elif args.command == 'decryptdata':
-            encrypted_data = bytes.fromhex(args.data)
-            decrypted_data = nyxcrypta.decrypt_data(encrypted_data, args.key, args.password)
-            if decrypted_data:
-                print("Decrypted data :", decrypted_data.decode('utf-8'))
-    except Exception as e:
-        logging.error(f"Error : {str(e)}")
-        sys.exit(1)
-
-
-if __name__ == '__main__':
-    main()
