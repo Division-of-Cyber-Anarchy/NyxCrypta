@@ -14,7 +14,7 @@ setup(
     url='https://github.com/Division-of-Cyber-Anarchy/NyxCrypta',
     packages=find_packages(),
     install_requires=[
-        'cryptography>=3.3.2',
+        'cryptography>=41.0.5',
         'argon2-cffi>=20.1.0',
         'cffi>=1.0.0',
     ],
