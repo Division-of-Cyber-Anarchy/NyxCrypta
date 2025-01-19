@@ -3,7 +3,7 @@ import logging
 
 def print_help():
     help_message = """
-NyxCrypta v1.3.0 - Python cryptography tool
+NyxCrypta v1.3.1 - Python cryptography tool
 
 Usage:
   nyxcrypta <command> [options]

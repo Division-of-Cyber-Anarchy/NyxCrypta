@@ -1,7 +1,7 @@
 import argparse
 
 def create_parser():
-    parser = argparse.ArgumentParser(description="NyxCrypta v1.3.0 - Python cryptography tool")
+    parser = argparse.ArgumentParser(description="NyxCrypta v1.3.1 - Python cryptography tool")
     parser.add_argument('--securitylevel', type=int, choices=[1, 2, 3], default=1,
                         help="Security Level (1=Standard, 2=High, 3=Paranoid)")
 
