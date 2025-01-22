@@ -1,11 +1,14 @@
 import argparse
 
 def create_parser():
-    parser = argparse.ArgumentParser(description="NyxCrypta v1.3.1 - Python cryptography tool")
+    parser = argparse.ArgumentParser(description="NyxCrypta v1.3.2 - Python cryptography tool")
     parser.add_argument('--securitylevel', type=int, choices=[1, 2, 3], default=1,
                         help="Security Level (1=Standard, 2=High, 3=Paranoid)")
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+    # test command
+    test_parser = subparsers.add_parser('test', help='Run all tests')
 
     # keygen
     keygen_parser = subparsers.add_parser('keygen', help='Generate a key pair')

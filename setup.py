@@ -5,7 +5,7 @@ with open('README.md', encoding='utf-8') as f:
 
 setup(
     name='nyxcrypta',
-    version='1.3.1',
+    version='1.3.2',
     author='DCA (Malic1tus, Calypt0sis, ViraL0x, NyxCrypta)',
     author_email='malic1tus@proton.me',
     description='Cryptography tool based on RSA and AES',
@@ -17,6 +17,7 @@ setup(
         'cryptography>=41.0.5',
         'argon2-cffi>=20.1.0',
         'cffi>=1.0.0',
+        'tqdm>=4.67',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',

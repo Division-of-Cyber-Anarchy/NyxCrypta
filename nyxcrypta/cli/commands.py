@@ -3,12 +3,13 @@ import logging
 
 def print_help():
     help_message = """
-NyxCrypta v1.3.1 - Python cryptography tool
+NyxCrypta v1.3.2 - Python cryptography tool
 
 Usage:
   nyxcrypta <command> [options]
 
 Commands:
+  test     Run all tests
   keygen   Generate a key pair
   encrypt  Encrypting a file
   decrypt  Decrypting a file
@@ -19,6 +20,9 @@ Global options:
   --securitylevel  Security level (1=Standard, 2=High, 3=Paranoid) [default: 1]
 
 Examples:
+  Run tests:
+    nyxcrypta test
+
   Key generation:
     nyxcrypta keygen -o ./keys -p "my_strong_password"
 
