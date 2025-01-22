@@ -13,7 +13,7 @@ def run_tests():
 
     try:
         # Run pytest and capture the result
-        pytest_exit_code = pytest.main(['tests/', '-v', '--capture=sys'])
+        pytest_exit_code = pytest.main(['nyxcrypta/tests/', '-v', '--capture=sys'])
         
         # Check pytest exit code
         # 0 = All tests passed
