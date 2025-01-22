@@ -4,7 +4,7 @@ from .core.crypto import NyxCrypta
 from .core.security import SecurityLevel
 from .cli.parser import create_parser
 from .cli.commands import print_help, handle_command
-from .test_runner import run_tests
+from .test_runner import TestRunner
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,19 +18,26 @@ def main():
     
     # Handle test command
     if args.command == 'test':
-        result = run_tests()
-        if result['success']:
-            print("All tests passed successfully")
-            sys.exit(0)
-        else:
-            print("Tests failed!")
-            if result['errors']:
-                for error in result['errors']:
-                    print(f"Error: {error}")
+        runner = TestRunner()
+        results = runner.run_all_tests()
+        
+        # Print summary
+        print("\n📊 Test Summary:")
+        print(f"Total tests: {results['total']}")
+        print(f"Passed: {results['passed']}")
+        print(f"Failed: {results['failed']}")
+        
+        if results['failed_tests']:
+            print("\n❌ Failed Tests:")
+            for test_name, error in results['failed_tests']:
+                print(f"- {test_name}: {error}")
             sys.exit(1)
+        else:
+            print("\n✨ All tests passed successfully!")
+            sys.exit(0)
     
     if not args.command:
-        print("Error : No command supplied.")
+        print("Error: No command supplied.")
         print_help()
         sys.exit(1)
 
