@@ -3,6 +3,7 @@ import sys
 import tempfile
 from nyxcrypta.core.crypto import NyxCrypta
 from nyxcrypta.core.security import SecurityLevel
+from nyxcrypta.core.compatibility import KeyConverter, KeyFormat
 import logging
 
 class TestRunner:
@@ -11,12 +12,13 @@ class TestRunner:
         self.passed_tests = []
         self.setup_logging()
         
-        # Exécuter tous les tests définis
+        # Define all tests to run
         self.tests = [
             self.test_key_generation,
             self.test_file_encryption_decryption,
             self.test_data_encryption_decryption,
-            self.test_security_levels
+            self.test_security_levels,
+            self.test_key_format_conversion
         ]
 
     def setup_logging(self):
@@ -65,14 +67,16 @@ class TestRunner:
         nx = NyxCrypta(SecurityLevel.STANDARD)
         password = "test_password123"
         
-        # Test key generation
-        assert nx.save_keys(temp_dir, password) == True, "Key generation failed"
-        
-        # Verify files were created
-        private_key_path = os.path.join(temp_dir, 'private_key.pem')
-        public_key_path = os.path.join(temp_dir, 'public_key.pem')
-        assert os.path.exists(private_key_path), "Private key file not created"
-        assert os.path.exists(public_key_path), "Public key file not created"
+        # Test key generation for each format
+        for key_format in [KeyFormat.PEM, KeyFormat.DER]:
+            assert nx.save_keys(temp_dir, password, key_format) == True, f"Key generation failed for {key_format} format"
+            
+            # Verify files were created with correct extension
+            ext = key_format.lower()
+            private_key_path = os.path.join(temp_dir, f'private_key.{ext}')
+            public_key_path = os.path.join(temp_dir, f'public_key.{ext}')
+            assert os.path.exists(private_key_path), f"Private key file not created for {key_format} format"
+            assert os.path.exists(public_key_path), f"Public key file not created for {key_format} format"
 
     def test_file_encryption_decryption(self, temp_dir):
         """Test file encryption and decryption"""
@@ -86,7 +90,7 @@ class TestRunner:
             f.write(test_data)
         
         # Generate keys
-        nx.save_keys(temp_dir, password)
+        nx.save_keys(temp_dir, password, KeyFormat.PEM)
         
         # Test encryption
         encrypted_file = os.path.join(temp_dir, 'test.encrypted')
@@ -116,7 +120,7 @@ class TestRunner:
         password = "test_password123"
         
         # Generate keys
-        nx.save_keys(temp_dir, password)
+        nx.save_keys(temp_dir, password, KeyFormat.PEM)
         
         # Test data
         test_data = b"Secret message"
@@ -142,7 +146,93 @@ class TestRunner:
         
         for level in SecurityLevel:
             nx = NyxCrypta(level)
-            assert nx.save_keys(temp_dir, password) == True, f"Key generation failed for security level {level.name}"
+            assert nx.save_keys(temp_dir, password, KeyFormat.PEM) == True, f"Key generation failed for security level {level.name}"
+
+    def test_key_format_conversion(self, temp_dir):
+        """Test key format conversion"""
+        nx = NyxCrypta(SecurityLevel.STANDARD)
+        password = "test_password123"
+        
+        # Generate initial keys in PEM format
+        nx.save_keys(temp_dir, password, KeyFormat.PEM)
+        
+        # Test public key conversions
+        formats = [KeyFormat.PEM, KeyFormat.DER, KeyFormat.SSH]  # Remove JSON from initial formats
+        for from_format in formats:
+            # Generate key in the source format
+            nx.save_keys(temp_dir, password, from_format)
+            
+            # Get the source key file
+            source_key_path = os.path.join(temp_dir, f'public_key.{from_format.lower()}')
+            with open(source_key_path, 'rb') as f:
+                key_data = f.read()
+            
+            # Test conversion to each target format
+            target_formats = formats + [KeyFormat.JSON]  # Add JSON as target format only
+            for to_format in target_formats:
+                if from_format == to_format:
+                    continue
+                
+                try:
+                    # Convert to target format
+                    converted_key = KeyConverter.convert_public_key(
+                        key_data,
+                        from_format,  # Use actual source format
+                        to_format
+                    )
+                    assert converted_key is not None, f"Public key conversion failed from {from_format} to {to_format}"
+                    
+                    # Skip conversion back for JSON format
+                    if to_format != KeyFormat.JSON:
+                        # Test conversion back
+                        back_converted = KeyConverter.convert_public_key(
+                            converted_key,
+                            to_format,
+                            from_format
+                        )
+                        assert back_converted is not None, f"Public key conversion failed from {to_format} back to {from_format}"
+                except Exception as e:
+                    raise AssertionError(f"Public key conversion error: {from_format} to {to_format} - {str(e)}")
+        
+        # Test private key conversions
+        private_formats = [KeyFormat.PEM, KeyFormat.DER]  # Remove JSON from initial formats
+        for from_format in private_formats:
+            # Generate key in the source format
+            nx.save_keys(temp_dir, password, from_format)
+            
+            # Get the source key file
+            source_key_path = os.path.join(temp_dir, f'private_key.{from_format.lower()}')
+            with open(source_key_path, 'rb') as f:
+                key_data = f.read()
+            
+            # Test conversion to each target format
+            target_formats = private_formats + [KeyFormat.JSON]  # Add JSON as target format only
+            for to_format in target_formats:
+                if from_format == to_format:
+                    continue
+                
+                try:
+                    # Convert to target format
+                    converted_key = KeyConverter.convert_private_key(
+                        key_data,
+                        from_format,  # Use actual source format
+                        to_format,
+                        password.encode()
+                    )
+                    assert converted_key is not None, f"Private key conversion failed from {from_format} to {to_format}"
+                    
+                    # Skip conversion back for JSON format
+                    if to_format != KeyFormat.JSON:
+                        # Test conversion back
+                        back_converted = KeyConverter.convert_private_key(
+                            converted_key,
+                            to_format,
+                            from_format,
+                            password.encode()
+                        )
+                        assert back_converted is not None, f"Private key conversion failed from {to_format} back to {from_format}"
+                except Exception as e:
+                    raise AssertionError(f"Private key conversion error: {from_format} to {to_format} - {str(e)}")
 
 def main():
     """Main entry point for the test runner"""
