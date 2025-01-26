@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import logging
 from tqdm import tqdm
 from .security import SecurityLevel
-from .utils import file_exists
+from .compatibility import KeyFormat
 
 class NyxCrypta:
     def __init__(self, security_level=SecurityLevel.STANDARD):
@@ -33,7 +33,7 @@ class NyxCrypta:
     def get_hash_algorithm(self):
         return hashes.SHA256()
 
-    def save_keys(self, output_dir, password):
+    def save_keys(self, output_dir, password, key_format=KeyFormat.PEM):
         try:
             os.makedirs(output_dir, exist_ok=True)
             print("Generating RSA key pair...")
@@ -42,26 +42,46 @@ class NyxCrypta:
                 pbar.update(1)
 
             # Private key backup (encrypted)
-            private_key_path = os.path.join(output_dir, 'private_key.pem')
-            print("Saving private key...")
-            with tqdm(total=1) as pbar:
-                with open(private_key_path, 'wb') as f:
-                    f.write(private_key.private_bytes(
-                        encoding=serialization.Encoding.PEM,
-                        format=serialization.PrivateFormat.PKCS8,
-                        encryption_algorithm=serialization.BestAvailableEncryption(password.encode())
-                    ))
-                pbar.update(1)
-            logging.info(f"Private key (encrypted) saved: {private_key_path}")
+            if key_format != KeyFormat.SSH:  # SSH format is only for public keys
+                private_key_path = os.path.join(output_dir, f'private_key.{key_format.lower()}')
+                print("Saving private key...")
+                with tqdm(total=1) as pbar:
+                    if key_format == KeyFormat.PEM:
+                        encoding = serialization.Encoding.PEM
+                    elif key_format == KeyFormat.DER:
+                        encoding = serialization.Encoding.DER
+                    else:
+                        raise ValueError(f"Unsupported key format for private key: {key_format}")
+
+                    with open(private_key_path, 'wb') as f:
+                        f.write(private_key.private_bytes(
+                            encoding=encoding,
+                            format=serialization.PrivateFormat.PKCS8,
+                            encryption_algorithm=serialization.BestAvailableEncryption(password.encode())
+                        ))
+                    pbar.update(1)
+                logging.info(f"Private key (encrypted) saved: {private_key_path}")
 
             # Public key backup
-            public_key_path = os.path.join(output_dir, 'public_key.pem')
+            public_key_path = os.path.join(output_dir, f'public_key.{key_format.lower()}')
             print("Saving public key...")
             with tqdm(total=1) as pbar:
+                if key_format == KeyFormat.PEM:
+                    encoding = serialization.Encoding.PEM
+                    pub_format = serialization.PublicFormat.SubjectPublicKeyInfo
+                elif key_format == KeyFormat.DER:
+                    encoding = serialization.Encoding.DER
+                    pub_format = serialization.PublicFormat.SubjectPublicKeyInfo
+                elif key_format == KeyFormat.SSH:
+                    encoding = serialization.Encoding.OpenSSH
+                    pub_format = serialization.PublicFormat.OpenSSH
+                else:
+                    raise ValueError(f"Unsupported key format for public key: {key_format}")
+
                 with open(public_key_path, 'wb') as f:
                     f.write(public_key.public_bytes(
-                        encoding=serialization.Encoding.PEM,
-                        format=serialization.PublicFormat.SubjectPublicKeyInfo
+                        encoding=encoding,
+                        format=pub_format
                     ))
                 pbar.update(1)
             logging.info(f"Public key saved: {public_key_path}")
@@ -71,211 +91,164 @@ class NyxCrypta:
             logging.error(f"Error during key generation: {str(e)}")
             return False
 
-    def encrypt_file(self, input_file, output_file, public_key_file):
+    def encrypt_file(self, input_file, output_file, public_key_path):
+        """Encrypt a file using RSA public key"""
         try:
-            file_exists(input_file)
-            file_exists(public_key_file)
+            # Load public key
+            with open(public_key_path, 'rb') as f:
+                public_key = serialization.load_pem_public_key(f.read())
 
-            with open(public_key_file, 'rb') as key_file:
-                public_key = serialization.load_pem_public_key(key_file.read())
-
-            # Get file size for progress bar
-            file_size = os.path.getsize(input_file)
-            chunks = (file_size + self.chunk_size - 1) // self.chunk_size
-
-            # AES key and nonce generation
+            # Generate a random AES key
             aes_key = AESGCM.generate_key(bit_length=256)
             aesgcm = AESGCM(aes_key)
             nonce = os.urandom(12)
 
-            # AES key encryption with RSA
-            print("Encrypting AES key...")
-            with tqdm(total=1) as pbar:
-                hash_algorithm = self.get_hash_algorithm()
-                encrypted_key = public_key.encrypt(
-                    aes_key,
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hash_algorithm),
-                        algorithm=hash_algorithm,
-                        label=None
-                    )
+            # Encrypt AES key with RSA
+            encrypted_key = public_key.encrypt(
+                aes_key,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
                 )
-                pbar.update(1)
+            )
 
-            # Data encryption with AES-GCM
-            print("Encrypting file...")
-            with open(input_file, 'rb') as in_file, open(output_file, 'wb') as out_file:
-                # Write header
-                out_file.write(struct.pack('<B', self.version))
-                out_file.write(struct.pack('<I', len(encrypted_key)))
-                out_file.write(encrypted_key)
-                out_file.write(nonce)
+            # Write header
+            with open(output_file, 'wb') as f:
+                f.write(struct.pack('<B', self.version))  # Version
+                f.write(struct.pack('<I', len(encrypted_key)))  # Key length
+                f.write(encrypted_key)  # Encrypted AES key
+                f.write(nonce)  # Nonce
 
-                # Encrypt file in chunks with progress bar
-                with tqdm(total=chunks, unit='MB') as pbar:
-                    while True:
-                        chunk = in_file.read(self.chunk_size)
-                        if not chunk:
-                            break
+                # Process file in chunks
+                with open(input_file, 'rb') as inf:
+                    while chunk := inf.read(self.chunk_size):
                         encrypted_chunk = aesgcm.encrypt(nonce, chunk, None)
-                        out_file.write(encrypted_chunk)
-                        pbar.update(1)
+                        f.write(encrypted_chunk)
 
-            logging.info(f"Encrypted file saved: {output_file}")
             return True
         except Exception as e:
-            logging.error(f"Error during encryption: {str(e)}")
+            logging.error(f"Error during file encryption: {str(e)}")
             return False
 
-    def decrypt_file(self, input_file, output_file, private_key_file, password):
+    def decrypt_file(self, input_file, output_file, private_key_path, password):
+        """Decrypt a file using RSA private key"""
         try:
-            file_exists(input_file)
-            file_exists(private_key_file)
+            # Load private key
+            with open(private_key_path, 'rb') as f:
+                private_key = serialization.load_pem_private_key(
+                    f.read(),
+                    password=password.encode()
+                )
 
-            # Private key loading with password
-            print("Loading private key...")
-            with tqdm(total=1) as pbar:
-                with open(private_key_file, 'rb') as key_file:
-                    private_key = serialization.load_pem_private_key(
-                        key_file.read(),
-                        password=password.encode()
-                    )
-                pbar.update(1)
-
-            # Get file size for progress bar
-            file_size = os.path.getsize(input_file)
-            
             with open(input_file, 'rb') as f:
+                # Read header
                 version = struct.unpack('<B', f.read(1))[0]
                 if version != self.version:
-                    raise ValueError(f"Format version not supported: {version}")
+                    raise ValueError(f"Unsupported version: {version}")
 
-                key_size = struct.unpack('<I', f.read(4))[0]
-                encrypted_key = f.read(key_size)
+                key_length = struct.unpack('<I', f.read(4))[0]
+                encrypted_key = f.read(key_length)
                 nonce = f.read(12)
-                
-                # Calculate remaining bytes for progress bar
-                remaining_bytes = file_size - (1 + 4 + key_size + 12)
-                chunks = (remaining_bytes + self.chunk_size - 1) // self.chunk_size
 
-                # AES key decryption
-                print("Decrypting AES key...")
-                with tqdm(total=1) as pbar:
-                    hash_algorithm = self.get_hash_algorithm()
-                    aes_key = private_key.decrypt(
-                        encrypted_key,
-                        padding.OAEP(
-                            mgf=padding.MGF1(algorithm=hash_algorithm),
-                            algorithm=hash_algorithm,
-                            label=None
-                        )
-                    )
-                    pbar.update(1)
-
-                # Data decryption in chunks
-                aesgcm = AESGCM(aes_key)
-                print("Decrypting file...")
-                with open(output_file, 'wb') as out_file, tqdm(total=chunks, unit='MB') as pbar:
-                    while True:
-                        chunk = f.read(self.chunk_size)
-                        if not chunk:
-                            break
-                        decrypted_chunk = aesgcm.decrypt(nonce, chunk, None)
-                        out_file.write(decrypted_chunk)
-                        pbar.update(1)
-
-            logging.info(f"Decrypted file saved: {output_file}")
-            return True
-        except Exception as e:
-            logging.error(f"Error during decryption: {str(e)}")
-            return False
-
-    def encrypt_data(self, data, public_key_file):
-        try:
-            print("Loading public key...")
-            with tqdm(total=1) as pbar:
-                with open(public_key_file, 'rb') as key_file:
-                    public_key = serialization.load_pem_public_key(key_file.read())
-                pbar.update(1)
-
-            if not isinstance(public_key, rsa.RSAPublicKey):
-                raise TypeError("The loaded public key is not an RSAPublicKey object")
-
-            print("Encrypting data...")
-            with tqdm(total=3) as pbar:
-                # AES key and nonce generation
-                aes_key = AESGCM.generate_key(bit_length=256)
-                aesgcm = AESGCM(aes_key)
-                nonce = os.urandom(12)
-                pbar.update(1)
-
-                # AES key encryption with RSA
-                hash_algorithm = self.get_hash_algorithm()
-                encrypted_key = public_key.encrypt(
-                    aes_key,
+                # Decrypt AES key
+                aes_key = private_key.decrypt(
+                    encrypted_key,
                     padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hash_algorithm),
-                        algorithm=hash_algorithm,
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
                         label=None
                     )
                 )
-                pbar.update(1)
+                aesgcm = AESGCM(aes_key)
 
-                # Data encryption with AES-GCM
-                encrypted_data = aesgcm.encrypt(nonce, data, None)
-                pbar.update(1)
+                # Process file in chunks
+                with open(output_file, 'wb') as outf:
+                    while chunk := f.read(self.chunk_size):
+                        decrypted_chunk = aesgcm.decrypt(nonce, chunk, None)
+                        outf.write(decrypted_chunk)
 
-            # Return encrypted data in binary form
-            result = struct.pack('<B', self.version) + struct.pack('<I', len(encrypted_key)) + encrypted_key + nonce + encrypted_data
+            return True
+        except Exception as e:
+            logging.error(f"Error during file decryption: {str(e)}")
+            return False
+
+    def encrypt_data(self, data, public_key_path):
+        """Encrypt raw data using RSA public key"""
+        try:
+            # Load public key
+            with open(public_key_path, 'rb') as f:
+                public_key = serialization.load_pem_public_key(f.read())
+
+            # Generate a random AES key
+            aes_key = AESGCM.generate_key(bit_length=256)
+            aesgcm = AESGCM(aes_key)
+            nonce = os.urandom(12)
+
+            # Encrypt AES key with RSA
+            encrypted_key = public_key.encrypt(
+                aes_key,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
+                )
+            )
+
+            # Encrypt data with AES
+            encrypted_data = aesgcm.encrypt(nonce, data, None)
+
+            # Format: version(1) + key_length(4) + encrypted_key + nonce(12) + encrypted_data
+            result = bytearray()
+            result.extend(struct.pack('<B', self.version))
+            result.extend(struct.pack('<I', len(encrypted_key)))
+            result.extend(encrypted_key)
+            result.extend(nonce)
+            result.extend(encrypted_data)
+
             return result.hex()
-
         except Exception as e:
             logging.error(f"Error during data encryption: {str(e)}")
             return None
 
-    def decrypt_data(self, encrypted_data, private_key_file, password):
+    def decrypt_data(self, encrypted_data, private_key_path, password):
+        """Decrypt raw data using RSA private key"""
         try:
-            print("Loading private key...")
-            with tqdm(total=1) as pbar:
-                with open(private_key_file, 'rb') as key_file:
-                    private_key = serialization.load_pem_private_key(
-                        key_file.read(),
-                        password=password.encode()
-                    )
-                pbar.update(1)
-
-            print("Decrypting data...")
-            with tqdm(total=3) as pbar:
-                # Extracting information from the encrypted format
-                version = struct.unpack('<B', encrypted_data[:1])[0]
-                if version != self.version:
-                    raise ValueError(f"Format version not supported: {version}")
-
-                key_size = struct.unpack('<I', encrypted_data[1:5])[0]
-                encrypted_key = encrypted_data[5:5 + key_size]
-                nonce = encrypted_data[5 + key_size:17 + key_size]
-                encrypted_data = encrypted_data[17 + key_size:]
-                pbar.update(1)
-
-                # AES key decryption
-                hash_algorithm = self.get_hash_algorithm()
-                aes_key = private_key.decrypt(
-                    encrypted_key,
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hash_algorithm),
-                        algorithm=hash_algorithm,
-                        label=None
-                    )
+            # Load private key
+            with open(private_key_path, 'rb') as f:
+                private_key = serialization.load_pem_private_key(
+                    f.read(),
+                    password=password.encode()
                 )
-                pbar.update(1)
 
-                # Data decryption
-                aesgcm = AESGCM(aes_key)
-                data = aesgcm.decrypt(nonce, encrypted_data, None)
-                pbar.update(1)
+            # Read header
+            data = encrypted_data
+            version = struct.unpack('<B', data[:1])[0]
+            if version != self.version:
+                raise ValueError(f"Unsupported version: {version}")
 
-            return data
+            pos = 1
+            key_length = struct.unpack('<I', data[pos:pos+4])[0]
+            pos += 4
+            encrypted_key = data[pos:pos+key_length]
+            pos += key_length
+            nonce = data[pos:pos+12]
+            pos += 12
+            encrypted_content = data[pos:]
 
+            # Decrypt AES key
+            aes_key = private_key.decrypt(
+                encrypted_key,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
+                )
+            )
+            aesgcm = AESGCM(aes_key)
+
+            # Decrypt data
+            return aesgcm.decrypt(nonce, encrypted_content, None)
         except Exception as e:
-            logging.error(f"Data decryption error: {str(e)}")
+            logging.error(f"Error during data decryption: {str(e)}")
             return None
