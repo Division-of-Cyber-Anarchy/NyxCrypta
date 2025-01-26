@@ -23,7 +23,7 @@ NyxCrypta is a Python cryptography library that combines asymmetric RSA encrypti
 
 ## Installation
 
-From PyPI (coming soon):
+From PyPI:
 ```bash
 pip install nyxcrypta
 ```
