@@ -25,6 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest
+          git clone https://github.com/Division-of-Cyber-Anarchy/NyxCrypta.git
           cd NyxCrypta
           pip install -e .
 
