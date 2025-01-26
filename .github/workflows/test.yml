@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install nyxcrypta pytest
+          pip install pytest tqdm cffi argon2-cffi cryptography
 
       - name: Run tests
         run: |
