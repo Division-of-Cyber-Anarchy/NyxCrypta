@@ -2,4 +2,4 @@ from .core.crypto import NyxCrypta
 from .core.security import SecurityLevel
 from .core.compatibility import KeyFormat, KeyConverter
 
-__version__ = "1.4.1"
+__version__ = "1.5.0"
