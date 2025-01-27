@@ -1,10 +1,35 @@
 # NyxCrypta
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)
-![License](https://img.shields.io/badge/license-MIT-orange.svg)
+[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)](#) 
+[![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](#requirements)
+[![License](https://img.shields.io/badge/license-MIT-orange.svg)](#license)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
-NyxCrypta is a Python cryptography library that combines asymmetric RSA encryption and symmetric AES encryption to secure your data efficiently and easily.
+> A Python cryptography library combining RSA asymmetric encryption and AES symmetric encryption for efficient and secure data protection.
+
+## 📑 Table of Contents
+
+- [Features](#features)
+- [Security Levels](#security-levels)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Key Generation](#key-generation)
+  - [Key Format Conversion](#key-format-conversion)
+  - [File Encryption/Decryption](#file-encryptiondecryption)
+  - [Data Encryption/Decryption](#data-encryptiondecryption)
+- [Security Features](#security-features)
+- [Testing](#testing)
+- [Key Format Support](#key-format-support)
+- [Python Example](#python-example)
+- [Dependencies](#dependencies)
+- [Internal Architecture](#internal-links-and-functional-relationships)
+- [FAQ](#faq)
+- [Security Considerations](#security-considerations)
+- [Development Status](#development-status)
+- [Contributing](#contributing)
+- [Bug Reports](#bug-reports-and-feature-requests)
+- [License](#license)
+- [Authors](#authors)
 
 ## Features
 
@@ -17,18 +42,20 @@ NyxCrypta is a Python cryptography library that combines asymmetric RSA encrypti
 
 ## Security Levels
 
-- Standard (2048-bit RSA)
-- High (3072-bit RSA)
-- Paranoid (4096-bit RSA)
+Security Level | RSA Key Size | Recommended Use
+--------------|--------------|----------------
+Standard | 2048-bit | General purpose encryption
+High | 3072-bit | Sensitive data protection
+Paranoid | 4096-bit | Maximum security requirements
 
 ## Installation
 
-From PyPI:
+### From PyPI
 ```bash
 pip install nyxcrypta
 ```
 
-From source:
+### From Source
 ```bash
 git clone https://github.com/Division-of-Cyber-Anarchy/NyxCrypta.git
 cd NyxCrypta
@@ -39,68 +66,60 @@ pip install -e .
 
 ### Key Generation
 
-Generate a key pair in PEM format:
 ```bash
+# Generate PEM format key pair
 nyxcrypta keygen -o ./keys -p "your_strong_password" -f PEM
-```
 
-Generate a key pair in DER format:
-```bash
+# Generate DER format key pair
 nyxcrypta keygen -o ./keys -p "your_strong_password" -f DER
-```
 
-Generate a public key in SSH format:
-```bash
+# Generate SSH format public key
 nyxcrypta keygen -o ./keys -p "your_strong_password" -f SSH
 ```
 
 ### Key Format Conversion
 
-Convert from PEM to DER:
 ```bash
+# Convert PEM to DER
 nyxcrypta convert -i ./keys/public_key.pem -o ./keys/key.der --from-format PEM --to-format DER
-```
 
-Convert from DER to SSH (public key only):
-```bash
+# Convert DER to SSH (public key only)
 nyxcrypta convert -i ./keys/public_key.der -o ./keys/key.ssh --from-format DER --to-format SSH --public
 ```
 
 ### File Encryption/Decryption
 
-Encrypt a file:
 ```bash
+# Encrypt a file
 nyxcrypta encrypt -i file.txt -o file.nyx -k ./keys/public_key.pem
-```
 
-Decrypt a file:
-```bash
+# Decrypt a file
 nyxcrypta decrypt -i file.nyx -o file.txt -k ./keys/private_key.pem -p "your_password"
 ```
 
 ### Data Encryption/Decryption
 
-Encrypt raw data:
 ```bash
+# Encrypt raw data
 nyxcrypta encryptdata -d "My secret data" -k ./keys/public_key.pem
-```
 
-Decrypt raw data:
-```bash
+# Decrypt raw data
 nyxcrypta decryptdata -d "encrypted_hex_string" -k ./keys/private_key.pem -p "your_password"
 ```
 
 ## Security Features
 
-- Hybrid encryption using RSA for key exchange and AES for data encryption
-- Strong key derivation using Argon2
-- Secure random number generation
-- Support for multiple security levels
-- Encrypted private key storage
+Feature | Description
+--------|------------
+Hybrid Encryption | RSA for key exchange, AES for data encryption
+Key Derivation | Argon2 for secure password-based key generation
+Random Generation | Secure random number generation using OS entropy
+Multi-level Security | Support for different RSA key sizes
+Private Key Protection | Encrypted storage of private keys
 
 ## Testing
 
-Run the test suite:
+Run the comprehensive test suite:
 ```bash
 nyxcrypta test
 ```
@@ -118,7 +137,7 @@ nyxcrypta test
 - DER format (.der)
 - JSON format (.json)
 
-## Python example
+## Python Example
 
 ```python
 from nyxcrypta import NyxCrypta, SecurityLevel, KeyFormat
@@ -170,41 +189,112 @@ with open("./keys/private_key.der", "wb") as f:
 
 ## Dependencies
 
-- cryptography>=41.0.5
-- argon2-cffi>=20.1.0
-- cffi>=1.0.0
-- tqdm>=4.67
+Package | Version | Purpose
+--------|---------|--------
+cryptography | >=41.0.5 | Core cryptographic operations
+argon2-cffi | >=20.1.0 | Password hashing and key derivation
+cffi | >=1.17.1 | C interface for cryptographic operations
+tqdm | >=4.67 | Progress bars for operations
+
+## Internal Architecture
+
+### Core Components
+
+```mermaid
+---
+config:
+  layout: fixed
+  theme: neo-dark
+  look: handDrawn
+---
+graph LR
+    A[Hybrid Encryption]
+    B[Strong Key Derivation]
+    C[Secure Random Number Generation]
+    D[Multiple Security Levels]
+    E[Encrypted Private Key Storage]
+
+    subgraph "Core Components"
+        A -->|Uses| F(RSA for Key Exchange)
+        A -->|Uses| G(AES for Data Encryption)
+        B -->|Based on| H(Argon2 Algorithm)
+        C -->|Provided by| I(Cryptography Library)
+        D -->|2048-bit, 3072-bit, 4096-bit| J(RSA Key Sizes)
+        E -->|Secured by| B
+        E -->|Formats| K(PEM, DER)
+    end
+
+    CLI -->|Triggers| A
+    CLI -->|Triggers| E
+    Utils -->|Supports| B
+    Utils -->|Supports| C
+```
+
+### Module Structure
+
+1. **Core Functions (`core/`)**
+   - `crypto.py`: Encryption/decryption logic
+   - `security.py`: Key derivation and storage
+   - `utils.py`: Utility functions
+   - `compatibility.py`: Format compatibility
+
+2. **CLI Interface (`cli/`)**
+   - `commands.py`: Command definitions
+   - `parser.py`: Input parsing
+
+3. **Testing (`test_runner.py`)**
+   - Automated testing suite
+   - Performance metrics
+
+## FAQ
+
+### What is hybrid encryption?
+NyxCrypta uses RSA for secure key exchange and AES for efficient data encryption, combining the strengths of both approaches.
+
+### Why use Argon2?
+Argon2 provides strong protection against brute-force attacks and is computationally expensive by design.
+
+### How secure is the random number generation?
+We use `os.urandom` and the cryptography library's secure random number generators.
+
+### What security level should I choose?
+- Standard (2048-bit): General use
+- High (3072-bit): Sensitive data
+- Paranoid (4096-bit): Maximum security
+
+### How are private keys protected?
+Private keys are encrypted using Argon2-derived keys and stored in encrypted PEM or DER format.
 
 ## Security Considerations
 
-- Always use strong passwords for private keys
-- Keep private keys secure and never share them
-- Use appropriate security levels based on your needs
-- Regularly update encryption keys
-- Verify file integrity after encryption/decryption
+- Use strong passwords for private keys
+- Keep private keys secure
+- Choose appropriate security levels
+- Update encryption keys regularly
+- Verify file integrity
 
 ## Development Status
 
-This project is currently in active development. While it's functional, please be aware that:
-- The API may change without notice
-- Some features might be experimental
-- Additional testing and security audits are ongoing
+Current status: Active Development
+- API may change
+- Some experimental features
+- Ongoing security audits
 
 ## Contributing
 
-1. Fork the [repository](https://github.com/Division-of-Cyber-Anarchy/NyxCrypta)
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
 ## Bug Reports and Feature Requests
 
-Please use the [GitHub issue tracker](https://github.com/Division-of-Cyber-Anarchy/NyxCrypta/issues) to report bugs or suggest features.
+Use the [GitHub issue tracker](https://github.com/Division-of-Cyber-Anarchy/NyxCrypta/issues)
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see LICENSE file
 
 ## Authors
 
@@ -214,15 +304,20 @@ Division of Cyber Anarchy (DCA)
 - [NyxCrypta]
 - [ViraL0x]
 
-Contact : malic1tus@proton.me nyxcrypta@proton.me calypt0sis@proton.me viral0x@proton.me
+### Contact
+- malic1tus@proton.me
+- nyxcrypta@proton.me
+- calypt0sis@proton.me
+- viral0x@proton.me
 
-Github : https://github.com/Division-of-Cyber-Anarchy/
+### GitHub
+https://github.com/Division-of-Cyber-Anarchy/
 
 ---
 
 *Simplicity is the ultimate sophistication. - Leonardo da Vinci*
 
-[Malic1tus]: <https://github.com/malic1tus>
-[Calypt0sis]: <https://github.com/calypt0sis>
-[NyxCrypta]: <https://github.com/nyxcrypta>
-[Viral0x]: <https://github.com/viral0x>
+[Malic1tus]: https://github.com/malic1tus
+[Calypt0sis]: https://github.com/calypt0sis
+[NyxCrypta]: https://github.com/nyxcrypta
+[ViraL0x]: https://github.com/viral0x
