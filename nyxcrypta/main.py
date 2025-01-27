@@ -8,6 +8,7 @@ from .cli.parser import create_parser
 from .cli.commands import print_help, handle_command
 from .cli.interactive import InteractiveCLI
 from .test_runner import TestRunner
+from argparse import Namespace
 
 console = Console()
 
@@ -29,9 +30,8 @@ def main():
                 cli.show_info("Goodbye!")
                 sys.exit(0)
             
-            # Create parser with default arguments
-            parser = create_parser()
-            args = parser.parse_args([command])
+            # Create empty args with just the command for interactive mode
+            args = Namespace(command=command)
             
             # Create NyxCrypta instance with chosen security level
             if command == 'keygen':
@@ -45,11 +45,13 @@ def main():
             print()  # Empty line for readability
 
     # Classic command line mode
-    elif '-h' in sys.argv or '--help' in sys.argv:
-        print_help()
-        sys.exit(0)
     else:
         parser = create_parser()
+        
+        if '-h' in sys.argv or '--help' in sys.argv:
+            print_help()
+            sys.exit(0)
+            
         args = parser.parse_args()
         
         if args.command == 'test':
@@ -76,8 +78,15 @@ def main():
             print_help()
             sys.exit(1)
 
-        nyxcrypta = NyxCrypta(SecurityLevel(args.securitylevel))
-        handle_command(args, nyxcrypta)
+        # Create NyxCrypta instance with security level from command line
+        security_level = SecurityLevel(getattr(args, 'securitylevel', 1))
+        nyxcrypta = NyxCrypta(security_level)
+        
+        try:
+            handle_command(args, nyxcrypta)
+        except Exception as e:
+            cli.show_error(f"Command failed: {str(e)}")
+            sys.exit(1)
 
 if __name__ == '__main__':
     main()

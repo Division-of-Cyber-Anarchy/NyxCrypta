@@ -1,7 +1,7 @@
 """
 Module for NyxCrypta's interactive CLI interface.
 """
-from typing import Optional
+from typing import Optional, Callable
 import questionary
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -10,6 +10,7 @@ from rich.syntax import Syntax
 from rich import print as rprint
 from ..core.security import SecurityLevel
 from ..core.compatibility import KeyFormat
+from contextlib import contextmanager
 
 console = Console()
 
@@ -69,16 +70,16 @@ class InteractiveCLI:
         
         return choices[result]
 
-    def get_key_format(self, include_ssh: bool = True) -> KeyFormat:
+    def get_key_format(self, include_ssh: bool = True) -> str:
         """Request key format"""
         choices = {
-            "PEM - Standard text format": KeyFormat.PEM,
-            "DER - Binary format": KeyFormat.DER,
-            "JSON - Structured format": KeyFormat.JSON
+            "PEM - Standard text format": "PEM",
+            "DER - Binary format": "DER",
+            "JSON - Structured format": "JSON"
         }
         
         if include_ssh:
-            choices["SSH - OpenSSH format (public keys only)"] = KeyFormat.SSH
+            choices["SSH - OpenSSH format (public keys only)"] = "SSH"
         
         result = questionary.select(
             "Choose key format:",
@@ -108,6 +109,7 @@ class InteractiveCLI:
             else:
                 self.console.print("[red]Passwords do not match. Please try again.[/red]")
 
+    @contextmanager
     def show_progress(self, operation: str):
         """Display progress for an operation"""
         with Progress(
@@ -115,7 +117,11 @@ class InteractiveCLI:
             TextColumn("[progress.description]{task.description}"),
             console=self.console
         ) as progress:
-            return progress.add_task(f"[cyan]{operation}...", total=None)
+            task = progress.add_task(f"[cyan]{operation}...", total=None)
+            try:
+                yield task
+            finally:
+                progress.update(task, completed=True)
 
     def show_success(self, message: str):
         """Display success message"""
