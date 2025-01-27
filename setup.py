@@ -18,6 +18,8 @@ setup(
         'argon2-cffi>=20.1.0',
         'cffi>=1.17.1',
         'tqdm>=4.67',
+        'questionary>=2.0.1',
+        'rich>=13.7.0',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
