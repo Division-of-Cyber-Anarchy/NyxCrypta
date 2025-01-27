@@ -44,6 +44,18 @@ def print_help():
 
   Convert key format:
     nyxcrypta convert -i key.pem -o key.der --from-format PEM --to-format DER
+
+  File encryption with PEM key:
+    nyxcrypta encrypt -i file.txt -o file.nyx -k ./keys/public_key.pem --key-format PEM
+
+  File decryption with DER key:
+    nyxcrypta decrypt -i file.nyx -o file.txt -k ./keys/private_key.der -p "password" --key-format DER
+    
+  Data encryption with SSH key:
+    nyxcrypta encryptdata -d "My RAW data" -k ./keys/public_key.ssh --key-format SSH
+    
+  Data decryption with PEM key:
+    nyxcrypta decryptdata -d "0203be021" -k ./keys/private_key.pem -p "password" --key-format PEM
     """
     console.print(help_message)
 
