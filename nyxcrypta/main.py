@@ -38,6 +38,23 @@ def main():
                 security_level = cli.get_security_level()
             else:
                 security_level = SecurityLevel.STANDARD
+
+            if command == 'test':
+                cli.show_info("Running tests...")
+                runner = TestRunner()
+                results = runner.run_all_tests()
+                
+                console.print("\n[bold cyan]📊 Test Summary:[/bold cyan]")
+                console.print(f"Total tests: {results['total']} tests")
+                console.print(f"Passed: [green]{results['passed']}[/green]")
+                console.print(f"Failed: [red]{results['failed']}[/red]")
+                
+                if results['failed_tests']:
+                    console.print("\n[red]❌ Failed Tests:[/red]")
+                    for test_name, error in results['failed_tests']:
+                        console.print(f"- {test_name}: {error}")
+                else:
+                    console.print("\n[green]✨ All tests passed successfully![/green]")
             
             nyxcrypta = NyxCrypta(security_level)
             handle_command(args, nyxcrypta)
