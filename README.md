@@ -211,6 +211,7 @@ cryptography | >=41.0.5 | Core cryptographic operations
 argon2-cffi | >=20.1.0 | Password hashing and key derivation
 cffi | >=1.17.1 | C interface for cryptographic operations
 tqdm | >=4.67 | Progress bars for operations
+rich | >=13.7.0 | Rich text and beautiful formatting in the terminal
 
 ## Internal Architecture
 
