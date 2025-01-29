@@ -1,6 +1,6 @@
 # NyxCrypta
 
-[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)](#) 
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](#) 
 [![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](#license)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
@@ -13,6 +13,7 @@
 - [Security Levels](#security-levels)
 - [Installation](#installation)
 - [Usage](#usage)
+  - [Interactive CLI](#interactive-cli)
   - [Key Generation](#key-generation)
   - [Key Format Conversion](#key-format-conversion)
   - [File Encryption/Decryption](#file-encryptiondecryption)
@@ -39,6 +40,7 @@
 - 💾 Raw data encryption and decryption
 - 🛡️ Strong encryption using RSA + AES hybrid approach
 - 🔄 Key format conversion utilities
+- 🖥️ Interactive CLI for beginners
 
 ## Security Levels
 
@@ -63,6 +65,20 @@ pip install -e .
 ```
 
 ## Usage
+
+### Interactive CLI
+
+Launch the interactive mode:
+```bash
+nyxcrypta
+```
+
+The interactive CLI provides a beginner-friendly interface with:
+- Step-by-step wizards for all operations
+- Clear explanations of each option
+- Secure password input
+- Progress indicators
+- Tab completion
 
 ### Key Generation
 
@@ -195,6 +211,7 @@ cryptography | >=41.0.5 | Core cryptographic operations
 argon2-cffi | >=20.1.0 | Password hashing and key derivation
 cffi | >=1.17.1 | C interface for cryptographic operations
 tqdm | >=4.67 | Progress bars for operations
+rich | >=13.7.0 | Rich text and beautiful formatting in the terminal
 
 ## Internal Architecture
 
