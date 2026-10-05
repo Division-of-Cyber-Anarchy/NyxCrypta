@@ -84,7 +84,10 @@ def handle_command(args, nyxcrypta):
                 cli.show_success(f"Keys generated successfully in {args.output}")
                 # Display key information
                 cli.show_key_info(f"{args.output}/public_key.{args.format.lower()}", "Public Key")
-                cli.show_info("Private key has been encrypted and saved")
+                if args.format == "SSH":
+                    cli.show_info("Private key has been encrypted and saved as private_key.pem (SSH is a public-key-only format)")
+                else:
+                    cli.show_info("Private key has been encrypted and saved")
             else:
                 cli.show_error("Failed to generate keys")
 

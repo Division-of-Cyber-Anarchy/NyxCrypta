@@ -1,6 +1,6 @@
 # NyxCrypta
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](#) 
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](#) 
 [![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](#license)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
@@ -19,6 +19,7 @@
   - [File Encryption/Decryption](#file-encryptiondecryption)
   - [Data Encryption/Decryption](#data-encryptiondecryption)
 - [Security Features](#security-features)
+- [What's New in 3.0.0](#whats-new-in-300)
 - [Testing](#testing)
 - [Key Format Support](#key-format-support)
 - [Python Example](#python-example)
@@ -91,6 +92,7 @@ nyxcrypta keygen -o ./keys -p "your_strong_password" -f DER
 
 # Generate SSH format public key
 nyxcrypta keygen -o ./keys -p "your_strong_password" -f SSH
+# (SSH is public-only: the private key is saved as ./keys/private_key.pem)
 ```
 
 ### Key Format Conversion
@@ -132,6 +134,35 @@ Key Derivation | Argon2 for secure password-based key generation
 Random Generation | Secure random number generation using OS entropy
 Multi-level Security | Support for different RSA key sizes
 Private Key Protection | Encrypted storage of private keys
+
+## What's New in 3.0.0
+
+Version 3.0.0 is a **major release**: it fixes several security flaws in the encryption format and is therefore **not backward compatible** with older versions of NyxCrypta.
+
+### Fixes
+
+| Area | Before (≤ 1.5.0) | Now (3.0.0) |
+|------|------------------|-------------|
+| AES-GCM nonce | One nonce reused for every 1 MB chunk of a file | Unique nonce per chunk (random 8-byte prefix + 4-byte counter) |
+| Large files | Files > 1 MB could be encrypted but **not decrypted** | Files of any size round-trip correctly |
+| Integrity | Header and chunk order not authenticated | Header, chunk index and "last chunk" flag are authenticated (AAD): tampering, reordering, duplication and truncation are detected |
+| JSON private keys | `convert ... --to-format JSON` stored the key **unencrypted** | The key is always stored encrypted and a password is required |
+| SSH key generation | `keygen -f SSH` discarded the private key | The private key is saved as `private_key.pem` next to `public_key.ssh` |
+
+### Points to know
+
+- ⚠️ **Format change.** Files and data encrypted with 3.0.0 use container format **v3** and **cannot be decrypted by NyxCrypta 1.x**. Upgrade every machine that needs to read them.
+- ♻️ **Existing files (v2) remain readable.** NyxCrypta 3.0.0 still decrypts files and data produced by 1.x and logs a warning. Those files were encrypted with a reused nonce and have no truncation protection, so **decrypt and re-encrypt them** with 3.0.0.
+- 🔑 **SSH is a public-key-only format.** `keygen -f SSH` writes `public_key.ssh` (OpenSSH) and an encrypted `private_key.pem`. Use the `.pem` file to decrypt.
+- 🔐 **JSON private keys require a password.** Exporting an unencrypted private key to JSON is refused. Existing `.json` private keys created by 1.x may contain an **unencrypted key**: delete them, treat the key as compromised if the file was shared or stored somewhere untrusted, and regenerate your keys.
+- 🧩 **Key format auto-detection.** Keys given to `encrypt`, `decrypt`, `encryptdata` and `decryptdata` are detected from their content (PEM, DER, SSH or JSON); `--key-format` is currently informational only.
+- 🧹 **Safer decryption.** Output is written to `<output>.part` and moved into place only after every chunk is authenticated. A failed decryption never leaves partial plaintext behind.
+- 📦 **Python API unchanged.** `NyxCrypta`, `SecurityLevel`, `KeyFormat` and `KeyConverter` keep the same signatures. Failures still return `False` / `None`.
+
+### Known limitations
+
+- `keygen -f JSON` is still not supported (use `convert` to export a key to JSON).
+- Passing `-p "password"` on the command line exposes the password in your shell history and process list. Prefer the interactive mode for sensitive operations.
 
 ## Testing
 
