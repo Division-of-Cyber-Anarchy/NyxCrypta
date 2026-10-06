@@ -448,7 +448,7 @@ class TestRunner:
         import io
         from contextlib import redirect_stdout
         from argparse import Namespace
-        from .cli.commands import handle_command
+        from nyxcrypta.cli.commands import handle_command
         buffer = io.StringIO()
         with redirect_stdout(buffer):
             result = handle_command(Namespace(**args), NyxCrypta(SecurityLevel.STANDARD))
