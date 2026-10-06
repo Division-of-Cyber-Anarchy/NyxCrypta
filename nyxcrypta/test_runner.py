@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+import shutil
 import struct
 import json
 import base64
@@ -32,7 +33,13 @@ class TestRunner:
             self.test_legacy_v2_decryption,
             self.test_data_header_authenticated,
             self.test_json_private_key_is_encrypted,
-            self.test_ssh_keygen_keeps_private_key
+            self.test_ssh_keygen_keeps_private_key,
+            self.test_der_keys_and_explicit_key_format,
+            self.test_keygen_json_roundtrip,
+            self.test_failed_encryption_leaves_no_output,
+            self.test_empty_and_binary_data_cli,
+            self.test_convert_detects_key_type_from_content,
+            self.test_handle_command_never_exits
         ]
 
     def setup_logging(self):
@@ -394,6 +401,113 @@ class TestRunner:
         enc = nx.encrypt_data(b"via ssh key", pub)
         assert nx.decrypt_data(bytes.fromhex(enc), priv, "test_password123") == b"via ssh key", \
             "SSH public key / PEM private key round-trip failed"
+
+    # ---- regression tests for 3.1.0 ------------------------------------------
+
+    def test_der_keys_and_explicit_key_format(self, temp_dir):
+        """DER keys work (auto-detected); an explicit --key-format is honoured"""
+        nx = NyxCrypta(SecurityLevel.STANDARD)
+        assert nx.save_keys(temp_dir, "test_password123", KeyFormat.DER), "DER key generation failed"
+        pub = os.path.join(temp_dir, 'public_key.der')
+        priv = os.path.join(temp_dir, 'private_key.der')
+        enc = nx.encrypt_data(b"der data", pub)
+        assert enc, "encrypt_data failed with a DER public key"
+        assert nx.decrypt_data(bytes.fromhex(enc), priv, "test_password123") == b"der data", "DER round-trip failed"
+        assert nx.encrypt_data(b"x", pub, KeyFormat.DER), "Explicit DER format rejected"
+        assert nx.encrypt_data(b"x", pub, KeyFormat.PEM) is None, "Explicit PEM accepted a DER key"
+        src, out = os.path.join(temp_dir, 'f.bin'), os.path.join(temp_dir, 'f.nyx')
+        with open(src, 'wb') as f:
+            f.write(b"file data")
+        assert nx.encrypt_file(src, out, pub, KeyFormat.DER), "File encryption with DER key failed"
+        assert nx.decrypt_file(out, src + '.out', priv, "test_password123", KeyFormat.DER), \
+            "File decryption with DER key failed"
+
+    def test_keygen_json_roundtrip(self, temp_dir):
+        """keygen -f JSON produces usable keys and the private key is encrypted"""
+        nx = NyxCrypta(SecurityLevel.STANDARD)
+        assert nx.save_keys(temp_dir, "test_password123", KeyFormat.JSON), "JSON key generation failed"
+        pub = os.path.join(temp_dir, 'public_key.json')
+        priv = os.path.join(temp_dir, 'private_key.json')
+        assert os.path.exists(pub) and os.path.exists(priv), "JSON key files missing"
+        inner = base64.b64decode(json.load(open(priv))["key"])
+        assert b"ENCRYPTED PRIVATE KEY" in inner, "Generated JSON private key is not encrypted"
+        enc = nx.encrypt_data(b"json keys", pub)
+        assert nx.decrypt_data(bytes.fromhex(enc), priv, "test_password123") == b"json keys", \
+            "JSON keys round-trip failed"
+
+    def test_failed_encryption_leaves_no_output(self, temp_dir):
+        """A failed encryption must not leave a partial output file"""
+        nx, pub, priv = self._setup_keys(temp_dir)
+        out = os.path.join(temp_dir, 'never.nyx')
+        assert nx.encrypt_file(os.path.join(temp_dir, 'missing.bin'), out, pub) is False, \
+            "Encryption of a missing file reported success"
+        assert not os.path.exists(out) and not os.path.exists(out + '.part'), "Partial output left behind"
+
+    def _run_cli(self, args):
+        """Runs handle_command and returns (result, captured stdout)"""
+        import io
+        from contextlib import redirect_stdout
+        from argparse import Namespace
+        from .cli.commands import handle_command
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            result = handle_command(Namespace(**args), NyxCrypta(SecurityLevel.STANDARD))
+        return result, buffer.getvalue()
+
+    def test_empty_and_binary_data_cli(self, temp_dir):
+        """decryptdata must accept an empty plaintext and not crash on binary data"""
+        nx, pub, priv = self._setup_keys(temp_dir)
+        common = dict(command='decryptdata', key=priv, password="test_password123", key_format=None)
+
+        result, _ = self._run_cli(dict(common, data=nx.encrypt_data(b"", pub)))
+        assert result is True, "Empty plaintext treated as a failure"
+
+        binary = bytes([0xff, 0xfe, 0x00, 0x80])
+        result, output = self._run_cli(dict(common, data=nx.encrypt_data(binary, pub)))
+        assert result is True, "Binary plaintext treated as a failure"
+        assert binary.hex() in output, "Binary plaintext not displayed as hexadecimal"
+
+    def test_convert_detects_key_type_from_content(self, temp_dir):
+        """convert must rely on the key content, not on a 'public' substring in the path"""
+        nx, pub, priv = self._setup_keys(temp_dir)
+        public_dir = os.path.join(temp_dir, 'public')
+        os.makedirs(public_dir)
+        private_in_public_dir = os.path.join(public_dir, 'private_key.pem')
+        shutil.copy(priv, private_in_public_dir)
+        out = os.path.join(temp_dir, 'private_key.der')
+        result, _ = self._run_cli(dict(
+            command='convert', input=private_in_public_dir, output=out,
+            from_format='PEM', to_format='DER', public=False, password="test_password123"))
+        assert result is True, "Private key in a 'public' directory was handled as a public key"
+        loaded = serialization.load_der_private_key(open(out, 'rb').read(), b"test_password123")
+        assert loaded.key_size == 2048, "Converted private key is not usable"
+
+        # a public key whose path does not contain 'public' is detected as public
+        renamed = os.path.join(temp_dir, 'my_key.pem')
+        shutil.copy(pub, renamed)
+        out_pub = os.path.join(temp_dir, 'my_key.der')
+        result, _ = self._run_cli(dict(
+            command='convert', input=renamed, output=out_pub,
+            from_format='PEM', to_format='DER', public=False, password=None))
+        assert result is True, "Public key without 'public' in its path was not detected"
+
+    def test_handle_command_never_exits(self, temp_dir):
+        """Errors return False instead of terminating the (interactive) session"""
+        try:
+            result, _ = self._run_cli(dict(
+                command='decrypt', input=os.path.join(temp_dir, 'missing.nyx'),
+                output=os.path.join(temp_dir, 'o'), key=os.path.join(temp_dir, 'missing.pem'),
+                password="x", key_format=None))
+        except SystemExit:
+            raise AssertionError("handle_command called sys.exit()")
+        assert result is False, "A failing command did not return False"
+        try:
+            result, _ = self._run_cli(dict(command='convert', input=os.path.join(temp_dir, 'nope'),
+                                           output='x', from_format='PEM', to_format='DER',
+                                           public=False, password=None))
+        except SystemExit:
+            raise AssertionError("handle_command called sys.exit() on an exception")
+        assert result is False, "An exception did not turn into a False result"
 
 def main():
     """Main entry point for the test runner"""

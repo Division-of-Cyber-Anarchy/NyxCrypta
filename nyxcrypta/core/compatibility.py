@@ -28,6 +28,32 @@ def detect_format(data: bytes) -> str:
     return KeyFormat.DER
 
 
+def detect_key_type(key_data: bytes, input_format: Optional[str] = None) -> str:
+    """Returns 'public' or 'private' by inspecting the key content (not its path)."""
+    input_format = input_format or detect_format(key_data)
+    if input_format == KeyFormat.SSH:
+        return "public"
+    if input_format == KeyFormat.JSON:
+        try:
+            key_type = json.loads(key_data)["type"]
+        except (KeyError, TypeError, json.JSONDecodeError) as e:
+            raise ValueError(f"Invalid JSON key file: {e}") from e
+        if key_type not in ("public", "private"):
+            raise ValueError(f"Unknown key type in JSON file: {key_type}")
+        return key_type
+    if input_format == KeyFormat.PEM:
+        if b"PRIVATE KEY" in key_data:
+            return "private"
+        if b"PUBLIC KEY" in key_data:
+            return "public"
+        raise ValueError("Unrecognized PEM content")
+    try:  # DER has no marker: a public key parses without a password
+        serialization.load_der_public_key(key_data)
+        return "public"
+    except ValueError:
+        return "private"
+
+
 def _unwrap_json_key(key_data: bytes, expected_type: str) -> bytes:
     """Extracts the PEM payload embedded in a NyxCrypta JSON key."""
     try:

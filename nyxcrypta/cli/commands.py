@@ -2,8 +2,8 @@ import sys
 import logging
 import questionary
 from rich.console import Console
-from .interactive import InteractiveCLI
-from ..core.compatibility import KeyConverter, KeyFormat
+from .interactive import InteractiveCLI, UserCancelled
+from ..core.compatibility import KeyConverter, KeyFormat, detect_key_type
 from argparse import Namespace
 
 console = Console()
@@ -32,7 +32,12 @@ def print_help():
   PEM           Standard PEM format
   DER           Binary DER format
   SSH           OpenSSH format (public keys only)
-  JSON          JSON format with base64 encoded key
+  JSON          JSON format with base64 encoded key (private keys are always encrypted)
+
+[bold]Key format option:[/bold]
+
+  --key-format is optional: the format is auto-detected from the key file.
+  Pass it to force a specific format.
 
 [bold]Examples:[/bold]
 
@@ -60,29 +65,33 @@ def print_help():
     console.print(help_message)
 
 def handle_command(args, nyxcrypta):
+    """Runs a command. Returns True on success, False otherwise.
+
+    Never exits the process: the caller decides (the interactive session must
+    survive an error, the classic CLI turns False into a non-zero exit code).
+    """
+    ok = True
     try:
         if args.command == 'keygen':
             cli.show_info("Generating new key pair...")
-            
-            # Si nous sommes en mode interactif et que les arguments sont manquants
+
+            # Interactive mode: ask for missing parameters
             if not hasattr(args, 'output') or not args.output:
                 output_dir = cli.get_file_path("save to", "directory")
                 password = cli.get_password()
                 key_format = cli.get_key_format()
-                # Mettre à jour les arguments
                 args = Namespace(
                     output=output_dir,
                     password=password,
-                    format=key_format,  # key_format est déjà une chaîne
+                    format=key_format,
                     command='keygen'
                 )
-            
+
             with cli.show_progress("Generating keys"):
                 success = nyxcrypta.save_keys(args.output, args.password, args.format)
-            
+
             if success:
                 cli.show_success(f"Keys generated successfully in {args.output}")
-                # Display key information
                 cli.show_key_info(f"{args.output}/public_key.{args.format.lower()}", "Public Key")
                 if args.format == "SSH":
                     cli.show_info("Private key has been encrypted and saved as private_key.pem (SSH is a public-key-only format)")
@@ -90,35 +99,36 @@ def handle_command(args, nyxcrypta):
                     cli.show_info("Private key has been encrypted and saved")
             else:
                 cli.show_error("Failed to generate keys")
+                ok = False
 
         elif args.command == 'convert':
             cli.show_info("Converting key format...")
-            
-            # Interactive parameters if needed
+
+            # Interactive mode: ask for missing parameters
             if not hasattr(args, 'input') or not args.input:
                 input_path = cli.get_file_path("read", "source key")
                 output_path = cli.get_file_path("write", "converted key")
                 from_format = cli.get_key_format()
                 to_format = cli.get_key_format()
-                is_public = cli.confirm_action("convert a public key")
-                password = None if is_public else cli.get_password(confirm=False)
-                # Mettre à jour les arguments
                 args = Namespace(
                     input=input_path,
                     output=output_path,
-                    from_format=from_format,  # from_format est déjà une chaîne
-                    to_format=to_format,      # to_format est déjà une chaîne
-                    public=is_public,
-                    password=password,
+                    from_format=from_format,
+                    to_format=to_format,
+                    public=False,
+                    password=None,
                     command='convert'
                 )
-            
+
             with open(args.input, 'rb') as f:
                 key_data = f.read()
-            
-            is_public = 'public' in args.input.lower() or args.public
-            password = None if is_public else (args.password or cli.get_password(confirm=False))
-            
+
+            # The key type comes from the key content, never from its path
+            is_public = args.public or detect_key_type(key_data, args.from_format) == "public"
+            password = None
+            if not is_public:
+                password = args.password or cli.get_password(confirm=False)
+
             with cli.show_progress("Converting"):
                 if is_public:
                     converted_key = KeyConverter.convert_public_key(
@@ -133,115 +143,136 @@ def handle_command(args, nyxcrypta):
                         args.to_format,
                         password.encode() if password else None
                     )
-            
+
             with open(args.output, 'wb') as f:
                 f.write(converted_key)
-            
+
             cli.show_success(f"Key converted successfully to {args.to_format}")
-            if not is_public:
+            if not is_public and password:
                 cli.show_info("Private key remains password protected")
 
         elif args.command == 'encrypt':
             cli.show_info("Encrypting file...")
-            
+
             if not hasattr(args, 'input') or not args.input:
                 input_file = cli.get_file_path("encrypt")
                 output_file = cli.get_file_path("save", "encrypted file")
                 key_path = cli.get_file_path("use", "public key")
-                # Mettre à jour les arguments
                 args = Namespace(
                     input=input_file,
                     output=output_file,
                     key=key_path,
+                    key_format=None,
                     command='encrypt'
                 )
-            
+
             with cli.show_progress("Encrypting"):
-                success = nyxcrypta.encrypt_file(args.input, args.output, args.key)
-            
+                success = nyxcrypta.encrypt_file(
+                    args.input, args.output, args.key, getattr(args, 'key_format', None))
+
             if success:
                 cli.show_success(f"File encrypted successfully: {args.output}")
             else:
                 cli.show_error("Encryption failed")
+                ok = False
 
         elif args.command == 'decrypt':
             cli.show_info("Decrypting file...")
-            
+
             if not hasattr(args, 'input') or not args.input:
                 input_file = cli.get_file_path("decrypt")
                 output_file = cli.get_file_path("save", "decrypted file")
                 key_path = cli.get_file_path("use", "private key")
                 password = cli.get_password(confirm=False)
-                # Mettre à jour les arguments
                 args = Namespace(
                     input=input_file,
                     output=output_file,
                     key=key_path,
                     password=password,
+                    key_format=None,
                     command='decrypt'
                 )
-            
+
             with cli.show_progress("Decrypting"):
-                success = nyxcrypta.decrypt_file(args.input, args.output, args.key, args.password)
-            
+                success = nyxcrypta.decrypt_file(
+                    args.input, args.output, args.key, args.password, getattr(args, 'key_format', None))
+
             if success:
                 cli.show_success(f"File decrypted successfully: {args.output}")
             else:
                 cli.show_error("Decryption failed")
+                ok = False
 
         elif args.command == 'encryptdata':
             cli.show_info("Encrypting data...")
-            
+
             if not hasattr(args, 'data') or not args.data:
-                data = questionary.text("Data to encrypt:").ask()
+                data = cli.ask_text("Data to encrypt:")
                 key_path = cli.get_file_path("use", "public key")
-                # Mettre à jour les arguments
                 args = Namespace(
                     data=data,
                     key=key_path,
+                    key_format=None,
                     command='encryptdata'
                 )
-            
+
             with cli.show_progress("Encrypting"):
-                encrypted_data = nyxcrypta.encrypt_data(args.data.encode(), args.key)
-            
+                encrypted_data = nyxcrypta.encrypt_data(
+                    args.data.encode(), args.key, getattr(args, 'key_format', None))
+
             if encrypted_data:
                 cli.show_success("Data encrypted successfully")
                 console.print("\n[bold]Encrypted data:[/bold]")
-                console.print(encrypted_data)
+                console.print(encrypted_data, markup=False, highlight=False)
             else:
                 cli.show_error("Data encryption failed")
+                ok = False
 
         elif args.command == 'decryptdata':
             cli.show_info("Decrypting data...")
-            
+
             if not hasattr(args, 'data') or not args.data:
-                data = questionary.text("Data to decrypt (hex):").ask()
+                data = cli.ask_text("Data to decrypt (hex):")
                 key_path = cli.get_file_path("use", "private key")
                 password = cli.get_password(confirm=False)
-                # Mettre à jour les arguments
                 args = Namespace(
                     data=data,
                     key=key_path,
                     password=password,
+                    key_format=None,
                     command='decryptdata'
                 )
-            
+
             with cli.show_progress("Decrypting"):
                 decrypted_data = nyxcrypta.decrypt_data(
                     bytes.fromhex(args.data),
                     args.key,
-                    args.password
+                    args.password,
+                    getattr(args, 'key_format', None)
                 )
-            
-            if decrypted_data:
+
+            # `is not None`: an empty plaintext (b"") is a valid result
+            if decrypted_data is not None:
                 cli.show_success("Data decrypted successfully")
                 console.print("\n[bold]Decrypted data:[/bold]")
-                console.print(decrypted_data.decode())
+                if not decrypted_data:
+                    console.print("(empty)", markup=False)
+                else:
+                    try:
+                        console.print(decrypted_data.decode('utf-8'), markup=False, highlight=False)
+                    except UnicodeDecodeError:
+                        cli.show_warning("Binary data (not valid UTF-8), displayed as hexadecimal")
+                        console.print(decrypted_data.hex(), markup=False, highlight=False)
             else:
                 cli.show_error("Data decryption failed")
+                ok = False
 
+    except UserCancelled:
+        cli.show_warning("Operation cancelled")
+        ok = False
     except Exception as e:
         cli.show_error(str(e))
         logging.error(str(e))
-        sys.exit(1)
+        ok = False
+
+    return ok

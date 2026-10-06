@@ -1,7 +1,7 @@
 import argparse
 
 def create_parser():
-    parser = argparse.ArgumentParser(description="NyxCrypta v3.0.0 - Python cryptography tool")
+    parser = argparse.ArgumentParser(description="NyxCrypta v3.1.0 - Python cryptography tool")
     parser.add_argument('--securitylevel', type=int, choices=[1, 2, 3], default=1,
                         help="Security Level (1=Standard, 2=High, 3=Paranoid)")
 
@@ -26,15 +26,15 @@ def create_parser():
     convert_parser.add_argument('--to-format', required=True, choices=['PEM', 'DER', 'SSH', 'JSON'],
                                help='Output key format')
     convert_parser.add_argument('-p', '--password', help='Password for private key')
-    convert_parser.add_argument('--public', action='store_true', help='Convert public key (default: private)')
+    convert_parser.add_argument('--public', action='store_true', help='Force public key handling (default: auto-detected from the key content)')
 
     # encrypt
     encrypt_parser = subparsers.add_parser('encrypt', help='File encryption')
     encrypt_parser.add_argument('-i', '--input', required=True, help='File to encrypt')
     encrypt_parser.add_argument('-o', '--output', required=True, help='Encrypted output file')
     encrypt_parser.add_argument('-k', '--key', required=True, help='Public key path')
-    encrypt_parser.add_argument('--key-format', choices=['PEM', 'DER', 'SSH'], default='PEM',
-                               help='Key format (default: PEM)')
+    encrypt_parser.add_argument('--key-format', choices=['PEM', 'DER', 'SSH', 'JSON'], default=None,
+        help='Key format (default: auto-detected from the key file)')
 
     # decrypt
     decrypt_parser = subparsers.add_parser('decrypt', help='File decryption')
@@ -42,22 +42,22 @@ def create_parser():
     decrypt_parser.add_argument('-o', '--output', required=True, help='Decrypted output file')
     decrypt_parser.add_argument('-k', '--key', required=True, help='Private key path')
     decrypt_parser.add_argument('-p', '--password', required=True, help='Private key password')
-    decrypt_parser.add_argument('--key-format', choices=['PEM', 'DER'], default='PEM',
-                               help='Key format (default: PEM)')
+    decrypt_parser.add_argument('--key-format', choices=['PEM', 'DER', 'JSON'], default=None,
+        help='Key format (default: auto-detected from the key file)')
 
     # encryptdata
     encryptdata_parser = subparsers.add_parser('encryptdata', help='RAW data encryption')
     encryptdata_parser.add_argument('-d', '--data', required=True, help='Data to encrypt')
     encryptdata_parser.add_argument('-k', '--key', required=True, help='Public key path')
-    encryptdata_parser.add_argument('--key-format', choices=['PEM', 'DER', 'SSH'], default='PEM',
-                                   help='Key format (default: PEM)')
+    encryptdata_parser.add_argument('--key-format', choices=['PEM', 'DER', 'SSH', 'JSON'], default=None,
+        help='Key format (default: auto-detected from the key file)')
 
     # decryptdata
     decryptdata_parser = subparsers.add_parser('decryptdata', help='RAW data decryption')
     decryptdata_parser.add_argument('-d', '--data', required=True, help='Data to decrypt')
     decryptdata_parser.add_argument('-k', '--key', required=True, help='Private key path')
     decryptdata_parser.add_argument('-p', '--password', required=True, help='Private key password')
-    decryptdata_parser.add_argument('--key-format', choices=['PEM', 'DER'], default='PEM',
-                                   help='Key format (default: PEM)')
+    decryptdata_parser.add_argument('--key-format', choices=['PEM', 'DER', 'JSON'], default=None,
+        help='Key format (default: auto-detected from the key file)')
 
     return parser

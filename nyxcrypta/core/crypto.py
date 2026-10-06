@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from tqdm import tqdm
 from .security import SecurityLevel
-from .compatibility import KeyFormat, load_public_key, load_private_key
+from .compatibility import KeyFormat, KeyConverter, load_public_key, load_private_key
 
 # Container format versions
 #   v2 (legacy): a single AES-GCM nonce reused for every chunk, no AAD.
@@ -59,11 +59,10 @@ class NyxCrypta:
     # ------------------------------------------------------------------ keys
 
     def save_keys(self, output_dir, password, key_format=KeyFormat.PEM):
-        """Generates and saves a key pair.
+        """Generates and saves a key pair (PEM, DER, SSH or JSON).
 
-        SSH is a public-key-only format: in that case the public key is written
-        as OpenSSH and the (encrypted) private key is saved as PEM, so it is
-        never lost.
+        The private key is always saved encrypted. SSH is a public-key-only
+        format: the public key is written as OpenSSH and the private key as PEM.
         """
         try:
             os.makedirs(output_dir, exist_ok=True)
@@ -72,48 +71,23 @@ class NyxCrypta:
                 private_key, public_key = self.generate_rsa_keypair()
                 pbar.update(1)
 
-            # Private key backup (encrypted)
             private_format = KeyFormat.PEM if key_format == KeyFormat.SSH else key_format
+            private_data = self._serialize_private(private_key, private_format, password.encode())
+            public_data = self._serialize_public(public_key, key_format)
+
             private_key_path = os.path.join(output_dir, f'private_key.{private_format.lower()}')
             print("Saving private key...")
             with tqdm(total=1) as pbar:
-                if private_format == KeyFormat.PEM:
-                    encoding = serialization.Encoding.PEM
-                elif private_format == KeyFormat.DER:
-                    encoding = serialization.Encoding.DER
-                else:
-                    raise ValueError(f"Unsupported key format for private key: {key_format}")
-
                 with open(private_key_path, 'wb') as f:
-                    f.write(private_key.private_bytes(
-                        encoding=encoding,
-                        format=serialization.PrivateFormat.PKCS8,
-                        encryption_algorithm=serialization.BestAvailableEncryption(password.encode())
-                    ))
+                    f.write(private_data)
                 pbar.update(1)
             logging.info(f"Private key (encrypted) saved: {private_key_path}")
 
-            # Public key backup
             public_key_path = os.path.join(output_dir, f'public_key.{key_format.lower()}')
             print("Saving public key...")
             with tqdm(total=1) as pbar:
-                if key_format == KeyFormat.PEM:
-                    encoding = serialization.Encoding.PEM
-                    pub_format = serialization.PublicFormat.SubjectPublicKeyInfo
-                elif key_format == KeyFormat.DER:
-                    encoding = serialization.Encoding.DER
-                    pub_format = serialization.PublicFormat.SubjectPublicKeyInfo
-                elif key_format == KeyFormat.SSH:
-                    encoding = serialization.Encoding.OpenSSH
-                    pub_format = serialization.PublicFormat.OpenSSH
-                else:
-                    raise ValueError(f"Unsupported key format for public key: {key_format}")
-
                 with open(public_key_path, 'wb') as f:
-                    f.write(public_key.public_bytes(
-                        encoding=encoding,
-                        format=pub_format
-                    ))
+                    f.write(public_data)
                 pbar.update(1)
             logging.info(f"Public key saved: {public_key_path}")
 
@@ -123,14 +97,40 @@ class NyxCrypta:
             return False
 
     @staticmethod
-    def _load_public(path):
-        with open(path, 'rb') as f:
-            return load_public_key(f.read())
+    def _serialize_private(private_key, key_format, password):
+        if key_format in (KeyFormat.PEM, KeyFormat.DER, KeyFormat.JSON):
+            pem = private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.BestAvailableEncryption(password)
+            )
+            if key_format == KeyFormat.PEM:
+                return pem
+            return KeyConverter.convert_private_key(pem, KeyFormat.PEM, key_format, password)
+        raise ValueError(f"Unsupported key format for private key: {key_format}")
 
     @staticmethod
-    def _load_private(path, password):
+    def _serialize_public(public_key, key_format):
+        pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        if key_format == KeyFormat.PEM:
+            return pem
+        if key_format in (KeyFormat.DER, KeyFormat.SSH, KeyFormat.JSON):
+            return KeyConverter.convert_public_key(pem, KeyFormat.PEM, key_format)
+        raise ValueError(f"Unsupported key format for public key: {key_format}")
+
+    @staticmethod
+    def _load_public(path, key_format=None):
+        """key_format=None -> detected from the file content."""
         with open(path, 'rb') as f:
-            return load_private_key(f.read(), password.encode())
+            return load_public_key(f.read(), key_format)
+
+    @staticmethod
+    def _load_private(path, password, key_format=None):
+        with open(path, 'rb') as f:
+            return load_private_key(f.read(), password.encode(), key_format)
 
     # ------------------------------------------------------------ primitives
 
@@ -146,10 +146,11 @@ class NyxCrypta:
 
     # ------------------------------------------------------------- file mode
 
-    def encrypt_file(self, input_file, output_file, public_key_path):
+    def encrypt_file(self, input_file, output_file, public_key_path, key_format=None):
         """Encrypt a file using RSA public key (format v3, chunked AES-256-GCM)"""
+        partial = output_file + ".part"
         try:
-            public_key = self._load_public(public_key_path)
+            public_key = self._load_public(public_key_path, key_format)
 
             aes_key = AESGCM.generate_key(bit_length=256)
             aesgcm = AESGCM(aes_key)
@@ -164,7 +165,7 @@ class NyxCrypta:
                 + struct.pack('<I', self.chunk_size)
             )
 
-            with open(output_file, 'wb') as f, open(input_file, 'rb') as inf:
+            with open(partial, 'wb') as f, open(input_file, 'rb') as inf:
                 f.write(header)
 
                 chunk = inf.read(self.chunk_size)
@@ -186,16 +187,20 @@ class NyxCrypta:
                     chunk = next_chunk
                     index += 1
 
+            os.replace(partial, output_file)
             return True
         except Exception as e:
             logging.error(f"Error during file encryption: {str(e)}")
             return False
+        finally:
+            if os.path.exists(partial):
+                os.remove(partial)
 
-    def decrypt_file(self, input_file, output_file, private_key_path, password):
+    def decrypt_file(self, input_file, output_file, private_key_path, password, key_format=None):
         """Decrypt a file using RSA private key (supports formats v3 and legacy v2)"""
         partial = output_file + ".part"
         try:
-            private_key = self._load_private(private_key_path, password)
+            private_key = self._load_private(private_key_path, password, key_format)
 
             with open(input_file, 'rb') as f, open(partial, 'wb') as outf:
                 version_byte = f.read(1)
@@ -276,10 +281,10 @@ class NyxCrypta:
 
     # ------------------------------------------------------------- data mode
 
-    def encrypt_data(self, data, public_key_path):
+    def encrypt_data(self, data, public_key_path, key_format=None):
         """Encrypt raw data using RSA public key. Returns a hex string."""
         try:
-            public_key = self._load_public(public_key_path)
+            public_key = self._load_public(public_key_path, key_format)
 
             aes_key = AESGCM.generate_key(bit_length=256)
             aesgcm = AESGCM(aes_key)
@@ -296,10 +301,10 @@ class NyxCrypta:
             logging.error(f"Error during data encryption: {str(e)}")
             return None
 
-    def decrypt_data(self, encrypted_data, private_key_path, password):
+    def decrypt_data(self, encrypted_data, private_key_path, password, key_format=None):
         """Decrypt raw data using RSA private key (supports v3 and legacy v2)"""
         try:
-            private_key = self._load_private(private_key_path, password)
+            private_key = self._load_private(private_key_path, password, key_format)
 
             data = encrypted_data
             if len(data) < 5:

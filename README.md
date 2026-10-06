@@ -1,6 +1,6 @@
 # NyxCrypta
 
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](#) 
+[![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](#) 
 [![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](#license)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
@@ -19,6 +19,7 @@
   - [File Encryption/Decryption](#file-encryptiondecryption)
   - [Data Encryption/Decryption](#data-encryptiondecryption)
 - [Security Features](#security-features)
+- [What's New in 3.1.0](#whats-new-in-310)
 - [What's New in 3.0.0](#whats-new-in-300)
 - [Testing](#testing)
 - [Key Format Support](#key-format-support)
@@ -135,6 +136,28 @@ Random Generation | Secure random number generation using OS entropy
 Multi-level Security | Support for different RSA key sizes
 Private Key Protection | Encrypted storage of private keys
 
+## What's New in 3.1.0
+
+Version 3.1.0 fixes functional bugs in the key handling and the CLI. The encryption format is **unchanged** (container v3): files encrypted with 3.0.0 and 3.1.0 are interchangeable.
+
+### Fixes
+
+| Area | Before (3.0.0) | Now (3.1.0) |
+|------|----------------|-------------|
+| `--key-format` | Accepted but ignored; the format was only detected from the content | Optional: the format is auto-detected, and when you pass it, it is enforced (a wrong value fails instead of being silently ignored) |
+| `keygen -f JSON` | Offered by the CLI but refused by `save_keys` | Generates `public_key.json` and `private_key.json` (the private key is always encrypted) |
+| Failed encryption | Could leave a partial output file | Output is written to `<output>.part` and moved into place only on success, for encryption as well as decryption |
+| `decryptdata` | An empty plaintext was reported as a failure; binary data crashed on `.decode()` | Empty data is a valid result; binary data is shown as hexadecimal with a warning |
+| `convert` | The key type was guessed from a `public` substring in the file path (`/home/public/key.pem` was treated as a public key) | The type is read from the key content (PEM header, JSON `type`, DER parsing) |
+| Interactive mode | The first error called `sys.exit(1)` and closed the session; Ctrl+C on a prompt raised an exception | Errors and cancelled prompts return to the menu; Ctrl+C on the main menu quits cleanly |
+
+### Points to know
+
+- 🔑 **`--key-format` default changed.** It no longer defaults to `PEM`: omitting it means auto-detection. Scripts that pass it explicitly keep working, and `JSON` is now accepted for `encrypt`, `encryptdata`, `decrypt` and `decryptdata`.
+- 🧪 **Exit codes.** In classic CLI mode, a failed operation (wrong password, missing file, failed encryption…) now returns a non-zero exit code, which makes scripting safer. Before, some failures still exited with `0`.
+- 🧩 **Python API.** `encrypt_file`, `decrypt_file`, `encrypt_data` and `decrypt_data` gain an optional trailing `key_format` argument (default: auto-detection). Existing calls are unaffected. `handle_command` now returns `True` / `False` and never exits the process.
+- 🖥️ **`convert` in interactive mode** no longer asks whether the key is public: the type is detected, and the password is requested only for private keys. `--public` stays available to force public-key handling.
+
 ## What's New in 3.0.0
 
 Version 3.0.0 is a **major release**: it fixes several security flaws in the encryption format and is therefore **not backward compatible** with older versions of NyxCrypta.
@@ -155,13 +178,12 @@ Version 3.0.0 is a **major release**: it fixes several security flaws in the enc
 - ♻️ **Existing files (v2) remain readable.** NyxCrypta 3.0.0 still decrypts files and data produced by 1.x and logs a warning. Those files were encrypted with a reused nonce and have no truncation protection, so **decrypt and re-encrypt them** with 3.0.0.
 - 🔑 **SSH is a public-key-only format.** `keygen -f SSH` writes `public_key.ssh` (OpenSSH) and an encrypted `private_key.pem`. Use the `.pem` file to decrypt.
 - 🔐 **JSON private keys require a password.** Exporting an unencrypted private key to JSON is refused. Existing `.json` private keys created by 1.x may contain an **unencrypted key**: delete them, treat the key as compromised if the file was shared or stored somewhere untrusted, and regenerate your keys.
-- 🧩 **Key format auto-detection.** Keys given to `encrypt`, `decrypt`, `encryptdata` and `decryptdata` are detected from their content (PEM, DER, SSH or JSON); `--key-format` is currently informational only.
+- 🧩 **Key format auto-detection.** Keys given to `encrypt`, `decrypt`, `encryptdata` and `decryptdata` are detected from their content (PEM, DER, SSH or JSON). Since 3.1.0, `--key-format` can also force a format.
 - 🧹 **Safer decryption.** Output is written to `<output>.part` and moved into place only after every chunk is authenticated. A failed decryption never leaves partial plaintext behind.
 - 📦 **Python API unchanged.** `NyxCrypta`, `SecurityLevel`, `KeyFormat` and `KeyConverter` keep the same signatures. Failures still return `False` / `None`.
 
 ### Known limitations
 
-- `keygen -f JSON` is still not supported (use `convert` to export a key to JSON).
 - Passing `-p "password"` on the command line exposes the password in your shell history and process list. Prefer the interactive mode for sensitive operations.
 
 ## Testing

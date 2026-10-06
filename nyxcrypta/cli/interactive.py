@@ -14,6 +14,19 @@ from contextlib import contextmanager
 
 console = Console()
 
+
+class UserCancelled(Exception):
+    """Raised when the user aborts a prompt (Ctrl+C / Esc)."""
+
+
+def ask(question):
+    """Runs a questionary prompt and turns a cancelled prompt (None) into UserCancelled."""
+    result = question.ask()
+    if result is None:
+        raise UserCancelled()
+    return result
+
+
 class InteractiveCLI:
     def __init__(self):
         self.console = Console()
@@ -27,7 +40,7 @@ class InteractiveCLI:
 ║║╚╗║║║║ ║║╠╣ ║║   ║╔╝║║ ║║║╔╗║╠╣║╔╗╗ ║║ ║╔╗║   
 ║║ ║║║║╚═╝║║║ ║╚═╗║║║║╚═╝║║╚╝║║║║╚╝║ ║╚╗║╚╝║   
 ╚╝ ╚═╝╚═╗╔╝╚╝ ╚══╝╚╝╚╝   ╚╣╔═╝╚╝║╔═╝ ╚═╝╚══╝   
-      ╔═╝║               ║║   ║║        v3.0.0   
+      ╔═╝║               ║║   ║║        v3.1.0   
       ╚══╝               ╚╝   ╚╝                 
 [/bold cyan]
 
@@ -48,11 +61,14 @@ class InteractiveCLI:
             "❌ Exit": "quit"
         }
         
-        result = questionary.select(
-            "What would you like to do?",
-            choices=list(choices.keys())
-        ).ask()
-        
+        try:
+            result = ask(questionary.select(
+                "What would you like to do?",
+                choices=list(choices.keys())
+            ))
+        except UserCancelled:
+            return "quit"  # Ctrl+C on the main menu leaves the application
+
         return choices[result]
 
     def get_security_level(self) -> SecurityLevel:
@@ -63,11 +79,11 @@ class InteractiveCLI:
             "Paranoid (RSA 4096-bit) - Maximum security": SecurityLevel.PARANOID
         }
         
-        result = questionary.select(
+        result = ask(questionary.select(
             "Choose security level:",
             choices=list(choices.keys())
-        ).ask()
-        
+        ))
+
         return choices[result]
 
     def get_key_format(self, include_ssh: bool = True) -> str:
@@ -81,28 +97,32 @@ class InteractiveCLI:
         if include_ssh:
             choices["SSH - OpenSSH format (public keys only)"] = "SSH"
         
-        result = questionary.select(
+        result = ask(questionary.select(
             "Choose key format:",
             choices=list(choices.keys())
-        ).ask()
-        
+        ))
+
         return choices[result]
 
     def get_file_path(self, purpose: str, file_type: str = "file") -> str:
         """Request file path"""
-        return questionary.path(
+        return ask(questionary.path(
             f"Path to {file_type} to {purpose}:"
-        ).ask()
+        ))
+
+    def ask_text(self, message: str) -> str:
+        """Request free text"""
+        return ask(questionary.text(message))
 
     def get_password(self, confirm: bool = True) -> str:
         """Request password with optional confirmation"""
         while True:
-            password = questionary.password("Enter password:").ask()
+            password = ask(questionary.password("Enter password:"))
             
             if not confirm:
                 return password
                 
-            confirm_password = questionary.password("Confirm password:").ask()
+            confirm_password = ask(questionary.password("Confirm password:"))
             
             if password == confirm_password:
                 return password
@@ -163,7 +183,7 @@ class InteractiveCLI:
 
     def confirm_action(self, action: str) -> bool:
         """Request confirmation for an action"""
-        return questionary.confirm(
+        return ask(questionary.confirm(
             f"Are you sure you want to {action}?",
             default=False
-        ).ask()
+        ))
