@@ -1,13 +1,15 @@
 import os
 import struct
 import logging
-from argon2 import PasswordHasher
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from tqdm import tqdm
-from .security import SecurityLevel
-from .compatibility import KeyFormat, KeyConverter, load_public_key, load_private_key
+from . import signing
+from .security import SecurityLevel, params_for_level
+from .compatibility import (
+    KeyFormat, load_public_key, load_private_key, serialize_private_key, serialize_public_key
+)
 
 # Container format versions
 #   v2 (legacy): a single AES-GCM nonce reused for every chunk, no AAD.
@@ -35,7 +37,6 @@ def _oaep():
 class NyxCrypta:
     def __init__(self, security_level=SecurityLevel.STANDARD):
         self.security_level = security_level
-        self.ph = PasswordHasher(time_cost=2, memory_cost=2 ** 16, parallelism=1)
         self.version = VERSION
         self.chunk_size = 1024 * 1024  # 1MB chunks
 
@@ -53,73 +54,69 @@ class NyxCrypta:
         )
         return private_key, private_key.public_key()
 
-    def get_hash_algorithm(self):
-        return hashes.SHA256()
-
     # ------------------------------------------------------------------ keys
 
     def save_keys(self, output_dir, password, key_format=KeyFormat.PEM):
-        """Generates and saves a key pair (PEM, DER, SSH or JSON).
+        """Generates and saves an RSA key pair (PEM, DER, SSH or JSON).
 
-        The private key is always saved encrypted. SSH is a public-key-only
-        format: the public key is written as OpenSSH and the private key as PEM.
+        The private key is always saved protected by the Argon2id key container
+        (cost depends on the security level). SSH is a public-key-only format:
+        the public key is written as OpenSSH and the private key as PEM.
         """
         try:
-            os.makedirs(output_dir, exist_ok=True)
             print("Generating RSA key pair...")
             with tqdm(total=1) as pbar:
                 private_key, public_key = self.generate_rsa_keypair()
                 pbar.update(1)
-
-            private_format = KeyFormat.PEM if key_format == KeyFormat.SSH else key_format
-            private_data = self._serialize_private(private_key, private_format, password.encode())
-            public_data = self._serialize_public(public_key, key_format)
-
-            private_key_path = os.path.join(output_dir, f'private_key.{private_format.lower()}')
-            print("Saving private key...")
-            with tqdm(total=1) as pbar:
-                with open(private_key_path, 'wb') as f:
-                    f.write(private_data)
-                pbar.update(1)
-            logging.info(f"Private key (encrypted) saved: {private_key_path}")
-
-            public_key_path = os.path.join(output_dir, f'public_key.{key_format.lower()}')
-            print("Saving public key...")
-            with tqdm(total=1) as pbar:
-                with open(public_key_path, 'wb') as f:
-                    f.write(public_data)
-                pbar.update(1)
-            logging.info(f"Public key saved: {public_key_path}")
-
-            return True
+            return self._save_keypair(output_dir, private_key, public_key, password,
+                                      key_format, "private_key", "public_key")
         except Exception as e:
             logging.error(f"Error during key generation: {str(e)}")
             return False
 
-    @staticmethod
-    def _serialize_private(private_key, key_format, password):
-        if key_format in (KeyFormat.PEM, KeyFormat.DER, KeyFormat.JSON):
-            pem = private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.BestAvailableEncryption(password)
-            )
-            if key_format == KeyFormat.PEM:
-                return pem
-            return KeyConverter.convert_private_key(pem, KeyFormat.PEM, key_format, password)
-        raise ValueError(f"Unsupported key format for private key: {key_format}")
+    def save_signing_keys(self, output_dir, password, key_format=KeyFormat.PEM):
+        """Generates and saves an Ed25519 signing key pair.
 
-    @staticmethod
-    def _serialize_public(public_key, key_format):
-        pem = public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-        if key_format == KeyFormat.PEM:
-            return pem
-        if key_format in (KeyFormat.DER, KeyFormat.SSH, KeyFormat.JSON):
-            return KeyConverter.convert_public_key(pem, KeyFormat.PEM, key_format)
-        raise ValueError(f"Unsupported key format for public key: {key_format}")
+        Files: signing_private_key.<fmt> (protected with Argon2id) and
+        signing_public_key.<fmt>. As for RSA keys, SSH writes an OpenSSH public
+        key and a PEM private key. The security level only sets the Argon2id cost.
+        """
+        try:
+            print("Generating Ed25519 signing key pair...")
+            with tqdm(total=1) as pbar:
+                private_key = ed25519.Ed25519PrivateKey.generate()
+                pbar.update(1)
+            return self._save_keypair(output_dir, private_key, private_key.public_key(), password,
+                                      key_format, "signing_private_key", "signing_public_key")
+        except Exception as e:
+            logging.error(f"Error during signing key generation: {str(e)}")
+            return False
+
+    def _save_keypair(self, output_dir, private_key, public_key, password, key_format,
+                      private_name, public_name):
+        os.makedirs(output_dir, exist_ok=True)
+
+        private_format = KeyFormat.PEM if key_format == KeyFormat.SSH else key_format
+        private_data = serialize_private_key(
+            private_key, private_format, password.encode(), params_for_level(self.security_level))
+        public_data = serialize_public_key(public_key, key_format)
+
+        private_key_path = os.path.join(output_dir, f'{private_name}.{private_format.lower()}')
+        print("Saving private key...")
+        with tqdm(total=1) as pbar:
+            with open(private_key_path, 'wb') as f:
+                f.write(private_data)
+            pbar.update(1)
+        logging.info(f"Private key (encrypted) saved: {private_key_path}")
+
+        public_key_path = os.path.join(output_dir, f'{public_name}.{key_format.lower()}')
+        print("Saving public key...")
+        with tqdm(total=1) as pbar:
+            with open(public_key_path, 'wb') as f:
+                f.write(public_data)
+            pbar.update(1)
+        logging.info(f"Public key saved: {public_key_path}")
+        return True
 
     @staticmethod
     def _load_public(path, key_format=None):
@@ -131,6 +128,20 @@ class NyxCrypta:
     def _load_private(path, password, key_format=None):
         with open(path, 'rb') as f:
             return load_private_key(f.read(), password.encode(), key_format)
+
+    @classmethod
+    def _load_rsa_public(cls, path, key_format=None):
+        key = cls._load_public(path, key_format)
+        if not isinstance(key, rsa.RSAPublicKey):
+            raise ValueError(f"An RSA public key is required for encryption (got {type(key).__name__})")
+        return key
+
+    @classmethod
+    def _load_rsa_private(cls, path, password, key_format=None):
+        key = cls._load_private(path, password, key_format)
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise ValueError(f"An RSA private key is required for decryption (got {type(key).__name__})")
+        return key
 
     # ------------------------------------------------------------ primitives
 
@@ -150,7 +161,7 @@ class NyxCrypta:
         """Encrypt a file using RSA public key (format v3, chunked AES-256-GCM)"""
         partial = output_file + ".part"
         try:
-            public_key = self._load_public(public_key_path, key_format)
+            public_key = self._load_rsa_public(public_key_path, key_format)
 
             aes_key = AESGCM.generate_key(bit_length=256)
             aesgcm = AESGCM(aes_key)
@@ -200,7 +211,7 @@ class NyxCrypta:
         """Decrypt a file using RSA private key (supports formats v3 and legacy v2)"""
         partial = output_file + ".part"
         try:
-            private_key = self._load_private(private_key_path, password, key_format)
+            private_key = self._load_rsa_private(private_key_path, password, key_format)
 
             with open(input_file, 'rb') as f, open(partial, 'wb') as outf:
                 version_byte = f.read(1)
@@ -284,7 +295,7 @@ class NyxCrypta:
     def encrypt_data(self, data, public_key_path, key_format=None):
         """Encrypt raw data using RSA public key. Returns a hex string."""
         try:
-            public_key = self._load_public(public_key_path, key_format)
+            public_key = self._load_rsa_public(public_key_path, key_format)
 
             aes_key = AESGCM.generate_key(bit_length=256)
             aesgcm = AESGCM(aes_key)
@@ -304,7 +315,7 @@ class NyxCrypta:
     def decrypt_data(self, encrypted_data, private_key_path, password, key_format=None):
         """Decrypt raw data using RSA private key (supports v3 and legacy v2)"""
         try:
-            private_key = self._load_private(private_key_path, password, key_format)
+            private_key = self._load_rsa_private(private_key_path, password, key_format)
 
             data = encrypted_data
             if len(data) < 5:
@@ -331,3 +342,63 @@ class NyxCrypta:
         except Exception as e:
             logging.error(f"Error during data decryption: {str(e)}")
             return None
+
+    # ------------------------------------------------------------ signatures
+
+    @staticmethod
+    def _write_atomic(path, data):
+        partial = path + ".part"
+        try:
+            with open(partial, 'wb') as f:
+                f.write(data)
+            os.replace(partial, path)
+        finally:
+            if os.path.exists(partial):
+                os.remove(partial)
+
+    def sign_file(self, input_file, private_key_path, password, signature_file=None, key_format=None):
+        """Signs a file with an Ed25519 private key (detached JSON signature).
+
+        The signature is written to `signature_file` (default: `<input_file>.sig`).
+        Returns True on success.
+        """
+        try:
+            signature_file = signature_file or input_file + ".sig"
+            private_key = signing.require_ed25519_private(
+                self._load_private(private_key_path, password, key_format))
+            self._write_atomic(
+                signature_file, signing.create_signature(private_key, signing.hash_file(input_file)))
+            return True
+        except Exception as e:
+            logging.error(f"Error during file signing: {str(e)}")
+            return False
+
+    def verify_file(self, input_file, signature_file, public_key_path, key_format=None):
+        """Verifies the detached signature of a file. Returns True only if it is valid."""
+        try:
+            public_key = self._load_public(public_key_path, key_format)
+            with open(signature_file, 'rb') as f:
+                signature_data = f.read()
+            return signing.check_signature(public_key, signing.hash_file(input_file), signature_data)
+        except Exception as e:
+            logging.error(f"Error during signature verification: {str(e)}")
+            return False
+
+    def sign_data(self, data, private_key_path, password, key_format=None):
+        """Signs raw bytes. Returns the signature (JSON bytes) or None on failure."""
+        try:
+            private_key = signing.require_ed25519_private(
+                self._load_private(private_key_path, password, key_format))
+            return signing.create_signature(private_key, signing.hash_data(data))
+        except Exception as e:
+            logging.error(f"Error during data signing: {str(e)}")
+            return None
+
+    def verify_data(self, data, signature, public_key_path, key_format=None):
+        """Verifies a signature produced by `sign_data`. Returns True only if it is valid."""
+        try:
+            public_key = self._load_public(public_key_path, key_format)
+            return signing.check_signature(public_key, signing.hash_data(data), signature)
+        except Exception as e:
+            logging.error(f"Error during data signature verification: {str(e)}")
+            return False

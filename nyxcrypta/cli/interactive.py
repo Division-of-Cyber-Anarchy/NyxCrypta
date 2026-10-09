@@ -40,11 +40,11 @@ class InteractiveCLI:
 ║║╚╗║║║║ ║║╠╣ ║║   ║╔╝║║ ║║║╔╗║╠╣║╔╗╗ ║║ ║╔╗║   
 ║║ ║║║║╚═╝║║║ ║╚═╗║║║║╚═╝║║╚╝║║║║╚╝║ ║╚╗║╚╝║   
 ╚╝ ╚═╝╚═╗╔╝╚╝ ╚══╝╚╝╚╝   ╚╣╔═╝╚╝║╔═╝ ╚═╝╚══╝   
-      ╔═╝║               ║║   ║║        v3.1.0   
+      ╔═╝║               ║║   ║║        v3.2.0   
       ╚══╝               ╚╝   ╚╝                 
 [/bold cyan]
 
-[yellow]RSA+AES Hybrid Cryptography Tool[/yellow]
+[yellow]RSA+AES Hybrid Cryptography Tool - Argon2id key protection, Ed25519 signatures[/yellow]
 """
         self.console.print(Panel(welcome_text, expand=False))
 
@@ -57,6 +57,9 @@ class InteractiveCLI:
             "🔓 Decrypt File": "decrypt",
             "📝 Encrypt Data": "encryptdata",
             "📋 Decrypt Data": "decryptdata",
+            "🖋️  Generate Signing Keys (Ed25519)": "signkeygen",
+            "✍️  Sign File": "sign",
+            "🔍 Verify Signature": "verify",
             "🧪 Run Tests": "test",
             "❌ Exit": "quit"
         }

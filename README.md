@@ -1,11 +1,11 @@
 # NyxCrypta
 
-[![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](#) 
+[![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)](#) 
 [![Python](https://img.shields.io/badge/python-3.10%2B-green.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](#license)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
-> A Python cryptography library combining RSA asymmetric encryption and AES symmetric encryption for efficient and secure data protection.
+> A Python cryptography library combining RSA asymmetric encryption and AES symmetric encryption for efficient and secure data protection, with Argon2id-protected private keys and Ed25519 digital signatures.
 
 ## 📑 Table of Contents
 
@@ -18,7 +18,9 @@
   - [Key Format Conversion](#key-format-conversion)
   - [File Encryption/Decryption](#file-encryptiondecryption)
   - [Data Encryption/Decryption](#data-encryptiondecryption)
+  - [Digital Signatures](#digital-signatures)
 - [Security Features](#security-features)
+- [What's New in 3.2.0](#whats-new-in-320)
 - [What's New in 3.1.0](#whats-new-in-310)
 - [What's New in 3.0.0](#whats-new-in-300)
 - [Testing](#testing)
@@ -37,7 +39,9 @@
 ## Features
 
 - 🔐 RSA key pair generation with multiple security levels
-- 📄 Multiple key formats support (PEM, DER, SSH)
+- 📄 Multiple key formats support (PEM, DER, SSH, JSON)
+- 🧱 Private keys protected with Argon2id + AES-256-GCM
+- ✍️ Ed25519 digital signatures (sign and verify files)
 - 🔒 File encryption and decryption
 - 💾 Raw data encryption and decryption
 - 🛡️ Strong encryption using RSA + AES hybrid approach
@@ -46,11 +50,13 @@
 
 ## Security Levels
 
-Security Level | RSA Key Size | Recommended Use
---------------|--------------|----------------
-Standard | 2048-bit | General purpose encryption
-High | 3072-bit | Sensitive data protection
-Paranoid | 4096-bit | Maximum security requirements
+Security Level | RSA Key Size | Argon2id (time / memory / lanes) | Recommended Use
+--------------|--------------|----------------------------------|----------------
+Standard | 2048-bit | 3 / 64 MiB / 4 | General purpose encryption
+High | 3072-bit | 4 / 128 MiB / 4 | Sensitive data protection
+Paranoid | 4096-bit | 5 / 256 MiB / 4 | Maximum security requirements
+
+The level sets the RSA key size and the cost of the Argon2id key derivation that protects the private key. The Argon2 parameters are stored inside each key, so a key can be used whatever level is selected later. `signkeygen` (Ed25519) uses the level for the Argon2 cost only.
 
 ## Installation
 
@@ -91,10 +97,15 @@ nyxcrypta keygen -o ./keys -p "your_strong_password" -f PEM
 # Generate DER format key pair
 nyxcrypta keygen -o ./keys -p "your_strong_password" -f DER
 
+# Generate JSON format key pair
+nyxcrypta keygen -o ./keys -p "your_strong_password" -f JSON
+
 # Generate SSH format public key
 nyxcrypta keygen -o ./keys -p "your_strong_password" -f SSH
 # (SSH is public-only: the private key is saved as ./keys/private_key.pem)
 ```
+
+The private key is always protected with your password through Argon2id (see [Security Features](#security-features)).
 
 ### Key Format Conversion
 
@@ -104,6 +115,9 @@ nyxcrypta convert -i ./keys/public_key.pem -o ./keys/key.der --from-format PEM -
 
 # Convert DER to SSH (public key only)
 nyxcrypta convert -i ./keys/public_key.der -o ./keys/key.ssh --from-format DER --to-format SSH --public
+
+# Re-protect a private key created by 3.1.0 or earlier with Argon2id (same password)
+nyxcrypta convert -i ./old_private_key.pem -o ./keys/private_key.pem --from-format PEM --to-format PEM -p "your_password"
 ```
 
 ### File Encryption/Decryption
@@ -126,15 +140,60 @@ nyxcrypta encryptdata -d "My secret data" -k ./keys/public_key.pem
 nyxcrypta decryptdata -d "encrypted_hex_string" -k ./keys/private_key.pem -p "your_password"
 ```
 
+### Digital Signatures
+
+Signatures prove that a file comes from the holder of a signing key and was not modified. They use **Ed25519** keys, which are separate from the RSA encryption keys.
+
+```bash
+# Generate an Ed25519 signing key pair (signing_private_key.* and signing_public_key.*)
+nyxcrypta signkeygen -o ./keys -p "your_strong_password" -f PEM
+
+# Sign a file: writes file.txt.sig (use -o to choose another name)
+nyxcrypta sign -i file.txt -k ./keys/signing_private_key.pem -p "your_password"
+
+# Verify: exit code 0 if valid, 1 otherwise
+nyxcrypta verify -i file.txt -k ./keys/signing_public_key.pem
+nyxcrypta verify -i file.txt -s other.sig -k ./keys/signing_public_key.ssh
+```
+
+Encrypting with a public key does **not** authenticate the sender: to prove who produced a file, sign the plaintext, send the `.sig` along with the encrypted file, and have the recipient verify it after decryption.
+
 ## Security Features
 
 Feature | Description
 --------|------------
-Hybrid Encryption | RSA for key exchange, AES for data encryption
-Key Derivation | Argon2 for secure password-based key generation
+Hybrid Encryption | RSA-OAEP for key exchange, AES-256-GCM for data encryption (chunked, authenticated)
+Key Derivation | Argon2id turns the password into the 256-bit key that protects each private key (unique 16-byte salt per key, cost set by the security level)
+Private Key Protection | Private keys are stored encrypted with AES-256-GCM under the Argon2id-derived key; the KDF parameters are authenticated and bounded when a key is read
+Digital Signatures | Ed25519 detached signatures over the SHA-512 digest of the file, with a domain-separation context
 Random Generation | Secure random number generation using OS entropy
-Multi-level Security | Support for different RSA key sizes
-Private Key Protection | Encrypted storage of private keys
+Multi-level Security | Different RSA key sizes and Argon2id costs
+
+## What's New in 3.2.0
+
+Version 3.2.0 makes the code match what the documentation promised: Argon2 is now really used, files can be signed and verified, and dead code was removed. Encrypted files and data (container v3) and public keys are **unchanged**.
+
+### Changes
+
+| Area | Before (3.1.0) | Now (3.2.0) |
+|------|----------------|-------------|
+| Argon2 | Documented, imported but never used; private keys relied on the standard PKCS8 password encryption | Argon2id derives the key protecting every private key (`core/security.py`) |
+| Signatures | "Verify file integrity" was documented but nothing could sign or verify | `signkeygen`, `sign` and `verify` commands and `save_signing_keys`, `sign_file`, `verify_file`, `sign_data`, `verify_data` in the Python API (Ed25519) |
+| `core/security.py` | Only the `SecurityLevel` enum | Argon2id parameters per level and the private key container ("key derivation and storage") |
+| Dead code | `NyxCrypta.ph`, `NyxCrypta.get_hash_algorithm()`, `core/utils.py` (`file_exists`), `VersionCompatibility` | Removed |
+| Key type checks | An unsuitable key failed with a cryptic error | Clear errors: RSA keys are required to encrypt/decrypt, Ed25519 keys to sign/verify |
+
+### Points to know
+
+- ⚠️ **Private key format change.** Keys generated or converted with 3.2.0 use the NyxCrypta key container (Argon2id + AES-256-GCM): they cannot be read by NyxCrypta older than 3.2.0, nor by OpenSSL. Public keys are unchanged.
+- ♻️ **Existing keys keep working.** Private keys from 3.1.0 and earlier (and standard encrypted PKCS8 keys) are still loaded. Upgrade them with `nyxcrypta convert -i old.pem -o new.pem --from-format PEM --to-format PEM -p "password"` (write to a new file rather than overwriting the old key, and keep the old key until you have checked the new one).
+- 🧱 **DER private keys.** `private_key.der` is now the binary NyxCrypta container, not an ASN.1 structure. The flag `--to-format DER` is kept for compatibility. Converting without a password still produces an unencrypted standard PKCS8 key.
+- 💾 **Memory and time.** Reading or writing a private key costs 64, 128 or 256 MiB of RAM and a fraction of a second, depending on the level the key was created with. This is the point of Argon2: it makes password guessing expensive.
+- 🛡️ **Hardened key reading.** The Argon2 parameters found in a key file are bounded (at most 1 GiB and 20 passes), so a crafted key cannot exhaust memory. Changing any parameter makes the key unreadable.
+- ✍️ **Signatures.** The file is hashed with SHA-512 (streamed, any file size) and Ed25519 signs a context string plus the digest. The detached `.sig` file is JSON. Signing keys are separate files (`signing_private_key.*`, `signing_public_key.*`): an RSA key cannot sign and an Ed25519 key cannot encrypt. The public key can be exported to OpenSSH format (`ssh-ed25519`).
+- 🚦 **Exit codes.** `verify` returns 1 when the signature is invalid, the key does not match, or the file was modified.
+- 🧹 **Removed API.** If your code imported `NyxCrypta.get_hash_algorithm`, `NyxCrypta.ph`, `nyxcrypta.core.utils.file_exists` or `VersionCompatibility`, remove those references: the library never used them.
+- ⚠️ **Still open.** Passing `-p "password"` on the command line exposes the password in your shell history and process list (see Known limitations below).
 
 ## What's New in 3.1.0
 
@@ -202,9 +261,15 @@ nyxcrypta test
 - JSON format (.json)
 
 ### Private Keys
-- PEM format (.pem)
-- DER format (.der)
-- JSON format (.json)
+- PEM format (.pem): PEM armor around the Argon2id key container
+- DER format (.der): the binary Argon2id key container
+- JSON format (.json): the PEM form wrapped in JSON, always encrypted
+
+Private keys from NyxCrypta 3.1.0 and earlier (standard encrypted PKCS8 in PEM or DER) can still be loaded.
+
+### Key Types
+- RSA keys (`keygen`): encryption and decryption
+- Ed25519 keys (`signkeygen`): signing and verification. Public keys can also be exported as OpenSSH (`ssh-ed25519`)
 
 ## Python Example
 
@@ -232,6 +297,15 @@ print(decrypted.decode())  # Prints: Hello, World!
 # Using higher security level
 nx_secure = NyxCrypta(SecurityLevel.PARANOID)
 nx_secure.save_keys("./secure_keys", "your_password", KeyFormat.PEM)
+
+# Digital signatures (Ed25519)
+nx.save_signing_keys("./keys", "your_password", KeyFormat.PEM)
+nx.sign_file("secret.txt", "./keys/signing_private_key.pem", "your_password")  # writes secret.txt.sig
+print(nx.verify_file("secret.txt", "secret.txt.sig", "./keys/signing_public_key.pem"))  # True / False
+
+# Signing raw bytes
+signature = nx.sign_data(b"Hello, World!", "./keys/signing_private_key.pem", "your_password")
+print(nx.verify_data(b"Hello, World!", signature, "./keys/signing_public_key.pem"))  # True
 
 # Key format conversion
 from nyxcrypta import KeyConverter
@@ -261,9 +335,10 @@ with open("./keys/private_key.der", "wb") as f:
 Package | Version | Purpose
 --------|---------|--------
 cryptography | >=41.0.5 | Core cryptographic operations
-argon2-cffi | >=20.1.0 | Password hashing and key derivation
+argon2-cffi | >=20.1.0 | Argon2id key derivation protecting private keys
 cffi | >=1.17.1 | C interface for cryptographic operations
 tqdm | >=4.67 | Progress bars for operations
+questionary | >=2.0.1 | Interactive prompts for the CLI
 rich | >=13.7.0 | Rich text and beautiful formatting in the terminal
 
 ## Internal Architecture
@@ -279,38 +354,44 @@ config:
 ---
 graph LR
     A[Hybrid Encryption]
-    B[Strong Key Derivation]
+    B[Argon2id Key Derivation]
     C[Secure Random Number Generation]
     D[Multiple Security Levels]
     E[Encrypted Private Key Storage]
+    S[Digital Signatures]
 
     subgraph "Core Components"
-        A -->|Uses| F(RSA for Key Exchange)
-        A -->|Uses| G(AES for Data Encryption)
-        B -->|Based on| H(Argon2 Algorithm)
+        A -->|Uses| F(RSA-OAEP for Key Exchange)
+        A -->|Uses| G(AES-256-GCM for Data Encryption)
+        B -->|Based on| H(Argon2id Algorithm)
         C -->|Provided by| I(Cryptography Library)
-        D -->|2048-bit, 3072-bit, 4096-bit| J(RSA Key Sizes)
+        D -->|2048, 3072, 4096-bit| J(RSA Key Sizes)
+        D -->|64, 128, 256 MiB| M(Argon2id Cost)
         E -->|Secured by| B
-        E -->|Formats| K(PEM, DER)
+        E -->|Formats| K(PEM, DER, JSON)
+        S -->|Uses| N(Ed25519 over SHA-512)
     end
 
     CLI -->|Triggers| A
     CLI -->|Triggers| E
-    Utils -->|Supports| B
-    Utils -->|Supports| C
+    CLI -->|Triggers| S
+    security.py -->|Implements| B
+    security.py -->|Implements| E
+    signing.py -->|Implements| S
 ```
 
 ### Module Structure
 
 1. **Core Functions (`core/`)**
-   - `crypto.py`: Encryption/decryption logic
-   - `security.py`: Key derivation and storage
-   - `utils.py`: Utility functions
-   - `compatibility.py`: Format compatibility
+   - `crypto.py`: Encryption/decryption, key generation and the signing API
+   - `security.py`: Security levels, Argon2id key derivation and the private key container
+   - `signing.py`: Ed25519 detached signatures (hashing, signature file, verification)
+   - `compatibility.py`: Key loading, serialization and format conversion
 
 2. **CLI Interface (`cli/`)**
    - `commands.py`: Command definitions
    - `parser.py`: Input parsing
+   - `interactive.py`: Interactive menus and prompts
 
 3. **Testing (`test_runner.py`)**
    - Automated testing suite
@@ -322,7 +403,7 @@ graph LR
 NyxCrypta uses RSA for secure key exchange and AES for efficient data encryption, combining the strengths of both approaches.
 
 ### Why use Argon2?
-Argon2 provides strong protection against brute-force attacks and is computationally expensive by design.
+Argon2id is memory-hard: every password guess costs a fixed amount of RAM and time (64 to 256 MiB here), which makes brute-force attacks with GPUs or dedicated hardware far more expensive than with classic key derivation functions.
 
 ### How secure is the random number generation?
 We use `os.urandom` and the cryptography library's secure random number generators.
@@ -333,7 +414,13 @@ We use `os.urandom` and the cryptography library's secure random number generato
 - Paranoid (4096-bit): Maximum security
 
 ### How are private keys protected?
-Private keys are encrypted using Argon2-derived keys and stored in encrypted PEM or DER format.
+The password is stretched with Argon2id (random 16-byte salt per key) into a 256-bit key, which encrypts the PKCS8 private key with AES-256-GCM. The result is stored as a NyxCrypta key container (PEM-armored, binary for DER, or wrapped in JSON). The Argon2 parameters are stored in the container and authenticated.
+
+### Can I use my OpenSSL or ssh-keygen keys?
+Public keys: yes (PEM, DER and OpenSSH are all read). Standard password-protected PKCS8 private keys are also accepted; use `nyxcrypta convert` to re-protect them with Argon2id. Private keys produced by NyxCrypta 3.2.0 cannot be read by OpenSSL.
+
+### How do I prove who sent a file?
+Generate a signing key pair with `signkeygen`, sign the file with `sign` and give the recipient the `.sig` file and your `signing_public_key.*`. The recipient runs `verify`. Encryption alone does not identify the sender.
 
 ## Security Considerations
 
@@ -341,7 +428,8 @@ Private keys are encrypted using Argon2-derived keys and stored in encrypted PEM
 - Keep private keys secure
 - Choose appropriate security levels
 - Update encryption keys regularly
-- Verify file integrity
+- Verify the signature of files you receive (`nyxcrypta verify`) before trusting them
+- Keep signing keys and encryption keys separate, and share only the public keys
 
 ## Development Status
 

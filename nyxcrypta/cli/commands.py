@@ -16,16 +16,20 @@ def print_help():
 [bold]Available Commands:[/bold]
 
   test          Run all tests
-  keygen        Generate key pair
+  keygen        Generate RSA key pair
+  signkeygen    Generate Ed25519 signing key pair
   convert       Convert key format
   encrypt       Encrypt a file
   decrypt       Decrypt a file
   encryptdata   Encrypt raw data
   decryptdata   Decrypt raw data
+  sign          Sign a file (Ed25519 detached signature)
+  verify        Verify the signature of a file
 
 [bold]Global Options:[/bold]
 
   --securitylevel  Security level (1=Standard, 2=High, 3=Paranoid) [default: 1]
+                   RSA key size for keygen; Argon2id cost for private key protection
 
 [bold]Key Formats:[/bold]
 
@@ -33,6 +37,9 @@ def print_help():
   DER           Binary DER format
   SSH           OpenSSH format (public keys only)
   JSON          JSON format with base64 encoded key (private keys are always encrypted)
+
+  Private keys are protected with Argon2id + AES-256-GCM (NyxCrypta key
+  container). DER private keys are this binary container, not ASN.1.
 
 [bold]Key format option:[/bold]
 
@@ -49,6 +56,14 @@ def print_help():
 
   Convert key format:
     nyxcrypta convert -i key.pem -o key.der --from-format PEM --to-format DER
+
+  Re-protect a legacy (3.1.0 and earlier) private key with Argon2id:
+    nyxcrypta convert -i old.pem -o new.pem --from-format PEM --to-format PEM -p "password"
+
+  Generate signing keys, sign and verify:
+    nyxcrypta signkeygen -o ./keys -p "password"
+    nyxcrypta sign -i file.txt -k ./keys/signing_private_key.pem -p "password"
+    nyxcrypta verify -i file.txt -k ./keys/signing_public_key.pem
 
   File encryption with PEM key:
     nyxcrypta encrypt -i file.txt -o file.nyx -k ./keys/public_key.pem --key-format PEM
@@ -99,6 +114,87 @@ def handle_command(args, nyxcrypta):
                     cli.show_info("Private key has been encrypted and saved")
             else:
                 cli.show_error("Failed to generate keys")
+                ok = False
+
+        elif args.command == 'signkeygen':
+            cli.show_info("Generating new signing key pair (Ed25519)...")
+
+            if not hasattr(args, 'output') or not args.output:
+                output_dir = cli.get_file_path("save to", "directory")
+                password = cli.get_password()
+                key_format = cli.get_key_format()
+                args = Namespace(
+                    output=output_dir,
+                    password=password,
+                    format=key_format,
+                    command='signkeygen'
+                )
+
+            with cli.show_progress("Generating signing keys"):
+                success = nyxcrypta.save_signing_keys(args.output, args.password, args.format)
+
+            if success:
+                cli.show_success(f"Signing keys generated successfully in {args.output}")
+                cli.show_key_info(f"{args.output}/signing_public_key.{args.format.lower()}", "Verification (public) key")
+                if args.format == "SSH":
+                    cli.show_info("Signing key has been encrypted and saved as signing_private_key.pem (SSH is a public-key-only format)")
+                else:
+                    cli.show_info("Signing key has been encrypted and saved")
+            else:
+                cli.show_error("Failed to generate signing keys")
+                ok = False
+
+        elif args.command == 'sign':
+            cli.show_info("Signing file...")
+
+            if not hasattr(args, 'input') or not args.input:
+                input_file = cli.get_file_path("sign")
+                key_path = cli.get_file_path("use", "signing (private) key")
+                password = cli.get_password(confirm=False)
+                args = Namespace(
+                    input=input_file,
+                    output=None,
+                    key=key_path,
+                    password=password,
+                    key_format=None,
+                    command='sign'
+                )
+
+            signature_file = getattr(args, 'output', None) or args.input + ".sig"
+            with cli.show_progress("Signing"):
+                success = nyxcrypta.sign_file(
+                    args.input, args.key, args.password, signature_file, getattr(args, 'key_format', None))
+
+            if success:
+                cli.show_success(f"File signed successfully: {signature_file}")
+            else:
+                cli.show_error("Signing failed")
+                ok = False
+
+        elif args.command == 'verify':
+            cli.show_info("Verifying signature...")
+
+            if not hasattr(args, 'input') or not args.input:
+                input_file = cli.get_file_path("verify")
+                signature = cli.get_file_path("read", "signature file")
+                key_path = cli.get_file_path("use", "verification (public) key")
+                args = Namespace(
+                    input=input_file,
+                    signature=signature,
+                    key=key_path,
+                    key_format=None,
+                    command='verify'
+                )
+
+            signature_file = getattr(args, 'signature', None) or args.input + ".sig"
+            with cli.show_progress("Verifying"):
+                valid = nyxcrypta.verify_file(
+                    args.input, signature_file, args.key, getattr(args, 'key_format', None))
+
+            if valid:
+                cli.show_success("Signature is valid: the file is authentic and unmodified")
+            else:
+                cli.show_error("Signature verification failed")
                 ok = False
 
         elif args.command == 'convert':

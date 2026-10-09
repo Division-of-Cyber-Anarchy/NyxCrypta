@@ -10,7 +10,8 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from nyxcrypta.core.crypto import NyxCrypta
 from nyxcrypta.core.security import SecurityLevel
-from nyxcrypta.core.compatibility import KeyConverter, KeyFormat
+from nyxcrypta.core.compatibility import KeyConverter, KeyFormat, load_private_key
+from nyxcrypta.core import security
 import logging
 
 class TestRunner:
@@ -39,7 +40,15 @@ class TestRunner:
             self.test_failed_encryption_leaves_no_output,
             self.test_empty_and_binary_data_cli,
             self.test_convert_detects_key_type_from_content,
-            self.test_handle_command_never_exits
+            self.test_handle_command_never_exits,
+            self.test_argon2_key_container,
+            self.test_argon2_rejects_excessive_parameters,
+            self.test_legacy_pkcs8_keys_load_and_upgrade,
+            self.test_signature_roundtrip_and_tampering,
+            self.test_signature_key_type_checks,
+            self.test_signature_all_key_formats,
+            self.test_sign_data_api,
+            self.test_signature_cli
         ]
 
     def setup_logging(self):
@@ -379,8 +388,8 @@ class TestRunner:
         password = b"test_password123"
         as_json = KeyConverter.convert_private_key(pem, KeyFormat.PEM, KeyFormat.JSON, password)
         inner = base64.b64decode(json.loads(as_json)["key"])
-        assert b"ENCRYPTED PRIVATE KEY" in inner, "JSON private key is not encrypted"
-        clear_pem = serialization.load_pem_private_key(pem, password).private_bytes(
+        assert b"BEGIN NYXCRYPTA ENCRYPTED PRIVATE KEY" in inner, "JSON private key is not encrypted"
+        clear_pem = load_private_key(pem, password).private_bytes(
             serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
         try:
             KeyConverter.convert_private_key(clear_pem, KeyFormat.PEM, KeyFormat.JSON, None)
@@ -388,7 +397,7 @@ class TestRunner:
         except ValueError as e:
             assert "password is required" in str(e), f"Unexpected error: {e}"
         back = KeyConverter.convert_private_key(as_json, KeyFormat.JSON, KeyFormat.PEM, password)
-        assert b"ENCRYPTED PRIVATE KEY" in back, "JSON -> PEM lost the encryption"
+        assert b"BEGIN NYXCRYPTA ENCRYPTED PRIVATE KEY" in back, "JSON -> PEM lost the encryption"
 
     def test_ssh_keygen_keeps_private_key(self, temp_dir):
         """keygen -f SSH must keep the private key and the result must be usable"""
@@ -430,7 +439,7 @@ class TestRunner:
         priv = os.path.join(temp_dir, 'private_key.json')
         assert os.path.exists(pub) and os.path.exists(priv), "JSON key files missing"
         inner = base64.b64decode(json.load(open(priv))["key"])
-        assert b"ENCRYPTED PRIVATE KEY" in inner, "Generated JSON private key is not encrypted"
+        assert b"BEGIN NYXCRYPTA ENCRYPTED PRIVATE KEY" in inner, "Generated JSON private key is not encrypted"
         enc = nx.encrypt_data(b"json keys", pub)
         assert nx.decrypt_data(bytes.fromhex(enc), priv, "test_password123") == b"json keys", \
             "JSON keys round-trip failed"
@@ -479,7 +488,7 @@ class TestRunner:
             command='convert', input=private_in_public_dir, output=out,
             from_format='PEM', to_format='DER', public=False, password="test_password123"))
         assert result is True, "Private key in a 'public' directory was handled as a public key"
-        loaded = serialization.load_der_private_key(open(out, 'rb').read(), b"test_password123")
+        loaded = load_private_key(open(out, 'rb').read(), b"test_password123")
         assert loaded.key_size == 2048, "Converted private key is not usable"
 
         # a public key whose path does not contain 'public' is detected as public
@@ -508,6 +517,259 @@ class TestRunner:
         except SystemExit:
             raise AssertionError("handle_command called sys.exit() on an exception")
         assert result is False, "An exception did not turn into a False result"
+
+    # ---- tests for 3.2.0: Argon2id key protection and Ed25519 signatures ------
+
+    def test_argon2_key_container(self, temp_dir):
+        """Private keys use the Argon2id container; its parameters are authenticated"""
+        nx, pub, priv = self._setup_keys(temp_dir)
+        pem = open(priv, 'rb').read()
+        assert pem.startswith(b"-----BEGIN NYXCRYPTA ENCRYPTED PRIVATE KEY-----"), "Private key is not a NyxCrypta container"
+        assert b"-----BEGIN ENCRYPTED PRIVATE KEY-----" not in pem, "Private key still uses standard PKCS8 encryption"
+
+        blob = security.dearmor(pem)
+        assert blob[:4] == security.MAGIC, "Missing container magic"
+        version, kdf, time_cost, memory_cost, parallelism = struct.unpack("<BBIIB", blob[4:15])
+        expected = security.ARGON2_PARAMS[SecurityLevel.STANDARD]
+        assert kdf == security.KDF_ARGON2ID, "Key derivation is not Argon2id"
+        assert (time_cost, memory_cost, parallelism) == (
+            expected.time_cost, expected.memory_cost, expected.parallelism), "Unexpected Argon2 parameters"
+
+        levels = [security.ARGON2_PARAMS[l] for l in (SecurityLevel.STANDARD, SecurityLevel.HIGH, SecurityLevel.PARANOID)]
+        assert levels[0].memory_cost < levels[1].memory_cost < levels[2].memory_cost, "Argon2 cost does not grow with the level"
+        assert all(l.memory_cost <= security.MAX_MEMORY_COST for l in levels), "A level exceeds the accepted bounds"
+
+        # salt and nonce are unique per key, even with the same password
+        other_dir = os.path.join(temp_dir, 'other')
+        nx.save_keys(other_dir, "test_password123", KeyFormat.PEM)
+        other = security.dearmor(open(os.path.join(other_dir, 'private_key.pem'), 'rb').read())
+        assert blob[15:43] != other[15:43], "Salt/nonce reused between two keys"
+
+        # DER is the raw binary container
+        der_dir = os.path.join(temp_dir, 'der')
+        nx.save_keys(der_dir, "test_password123", KeyFormat.DER)
+        assert open(os.path.join(der_dir, 'private_key.der'), 'rb').read().startswith(security.MAGIC), \
+            "DER private key is not the binary container"
+
+        encrypted = nx.encrypt_data(b"argon2", pub)
+        assert nx.decrypt_data(bytes.fromhex(encrypted), priv, "test_password123") == b"argon2", "Round-trip failed"
+        assert nx.decrypt_data(bytes.fromhex(encrypted), priv, "wrong") is None, "Wrong password accepted"
+
+        # lowering the Argon2 time cost in the header must be rejected (the parameters
+        # feed the key derivation and the whole header is also authenticated as AAD)
+        tampered = bytearray(blob)
+        tampered[6] ^= 0x01
+        tampered_path = os.path.join(temp_dir, 'tampered.pem')
+        with open(tampered_path, 'wb') as f:
+            f.write(security.armor(bytes(tampered)))
+        assert nx.decrypt_data(bytes.fromhex(encrypted), tampered_path, "test_password123") is None, \
+            "Tampered Argon2 parameters were accepted"
+
+    def test_argon2_rejects_excessive_parameters(self, temp_dir):
+        """A crafted key file cannot force huge memory/time usage; empty passwords are refused"""
+        small = security.Argon2Params(time_cost=1, memory_cost=8, parallelism=1)
+        payload = b"k" * 48
+        blob = security.protect_private_key(payload, b"pw", small)
+        assert security.unprotect_private_key(blob, b"pw") == payload, "Container round-trip failed"
+
+        crafted = bytearray(blob)
+        crafted[10:14] = struct.pack("<I", 2 ** 30)  # 1 TiB expressed in KiB
+        try:
+            security.unprotect_private_key(bytes(crafted), b"pw")
+            raise AssertionError("Excessive memory cost accepted")
+        except ValueError as e:
+            assert "memory" in str(e), f"Unexpected error: {e}"
+
+        for bad in (security.Argon2Params(0, 8, 1), security.Argon2Params(1, 8, 0),
+                    security.Argon2Params(1, 2 ** 30, 1), security.Argon2Params(10 ** 6, 8, 1)):
+            try:
+                security.protect_private_key(payload, b"pw", bad)
+                raise AssertionError(f"Out-of-bounds parameters accepted: {bad}")
+            except ValueError:
+                pass
+        try:
+            security.protect_private_key(payload, b"", small)
+            raise AssertionError("Empty password accepted")
+        except ValueError:
+            pass
+
+    def test_legacy_pkcs8_keys_load_and_upgrade(self, temp_dir):
+        """Keys from 3.1.0 and earlier (standard encrypted PKCS8) still work and can be upgraded"""
+        nx = NyxCrypta(SecurityLevel.STANDARD)
+        private_key, public_key = nx.generate_rsa_keypair()
+        password = b"test_password123"
+        enc = serialization.BestAvailableEncryption(password)
+        legacy_pem = private_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, enc)
+        legacy_der = private_key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8, enc)
+        pub = os.path.join(temp_dir, 'pub.pem')
+        with open(pub, 'wb') as f:
+            f.write(public_key.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+        message = nx.encrypt_data(b"legacy", pub)
+
+        for name, data in (('legacy.pem', legacy_pem), ('legacy.der', legacy_der)):
+            path = os.path.join(temp_dir, name)
+            with open(path, 'wb') as f:
+                f.write(data)
+            assert nx.decrypt_data(bytes.fromhex(message), path, "test_password123") == b"legacy", \
+                f"Legacy {name} key could not be used"
+
+        upgraded = KeyConverter.convert_private_key(legacy_pem, KeyFormat.PEM, KeyFormat.PEM, password)
+        assert upgraded.startswith(b"-----BEGIN NYXCRYPTA ENCRYPTED PRIVATE KEY-----"), "Legacy key was not upgraded to Argon2id"
+        upgraded_path = os.path.join(temp_dir, 'upgraded.pem')
+        with open(upgraded_path, 'wb') as f:
+            f.write(upgraded)
+        assert nx.decrypt_data(bytes.fromhex(message), upgraded_path, "test_password123") == b"legacy", \
+            "Upgraded key cannot decrypt"
+
+    def _signing_setup(self, temp_dir, key_format=KeyFormat.PEM):
+        nx = NyxCrypta(SecurityLevel.STANDARD)
+        assert nx.save_signing_keys(temp_dir, "test_password123", key_format), "Signing key generation failed"
+        private_ext = 'pem' if key_format == KeyFormat.SSH else key_format.lower()
+        return (nx,
+                os.path.join(temp_dir, f'signing_public_key.{key_format.lower()}'),
+                os.path.join(temp_dir, f'signing_private_key.{private_ext}'))
+
+    def test_signature_roundtrip_and_tampering(self, temp_dir):
+        """Valid signatures verify; any change to the file, signature or key is rejected"""
+        nx, pub, priv = self._signing_setup(temp_dir)
+        src = os.path.join(temp_dir, 'doc.bin')
+        data = os.urandom(3 * 1024 * 1024 + 7)  # several read chunks
+        with open(src, 'wb') as f:
+            f.write(data)
+        sig = src + '.sig'
+        assert nx.sign_file(src, priv, "test_password123"), "Signing failed"
+        assert os.path.exists(sig), "Default signature file was not created"
+        assert nx.verify_file(src, sig, pub) is True, "Valid signature rejected"
+
+        def verify_variant(content, label):
+            path = os.path.join(temp_dir, 'variant.bin')
+            with open(path, 'wb') as f:
+                f.write(content)
+            assert nx.verify_file(path, sig, pub) is False, f"{label} was not detected"
+
+        flipped = bytearray(data); flipped[1_500_000] ^= 1
+        verify_variant(bytes(flipped), "bit flip in the file")
+        verify_variant(data[:-1], "truncated file")
+        verify_variant(data + b"\x00", "appended byte")
+
+        doc = json.load(open(sig))
+        raw = bytearray(base64.b64decode(doc["signature"])); raw[0] ^= 1
+        bad_sig = os.path.join(temp_dir, 'bad.sig')
+        for label, mutate in (
+            ("modified signature", lambda d: d.update(signature=base64.b64encode(bytes(raw)).decode())),
+            ("unsupported version", lambda d: d.update(version=99)),
+            ("unsupported algorithm", lambda d: d.update(algorithm="RSA")),
+        ):
+            changed = dict(doc); mutate(changed)
+            with open(bad_sig, 'wb') as f:
+                f.write(json.dumps(changed).encode())
+            assert nx.verify_file(src, bad_sig, pub) is False, f"{label} was not detected"
+        with open(bad_sig, 'wb') as f:
+            f.write(b"not a signature")
+        assert nx.verify_file(src, bad_sig, pub) is False, "Garbage signature file accepted"
+
+        # another signer's key, with and without the fingerprint hint
+        other_dir = os.path.join(temp_dir, 'other')
+        _, other_pub, _ = self._signing_setup(other_dir)
+        assert nx.verify_file(src, sig, other_pub) is False, "Signature accepted with the wrong key"
+        no_hint = dict(doc); del no_hint["key_fingerprint"]
+        with open(bad_sig, 'wb') as f:
+            f.write(json.dumps(no_hint).encode())
+        assert nx.verify_file(src, bad_sig, other_pub) is False, "Wrong key accepted when the fingerprint is absent"
+        assert nx.verify_file(src, bad_sig, pub) is True, "The fingerprint must be optional for a valid signature"
+
+        # wrong password: nothing written
+        sig2 = os.path.join(temp_dir, 'never.sig')
+        assert nx.sign_file(src, priv, "wrong", sig2) is False, "Signing worked with a wrong password"
+        assert not os.path.exists(sig2) and not os.path.exists(sig2 + '.part'), "Partial signature left behind"
+        assert nx.sign_file(os.path.join(temp_dir, 'missing.bin'), priv, "test_password123", sig2) is False, \
+            "Signing a missing file reported success"
+        assert not os.path.exists(sig2), "Signature written for a missing file"
+
+        # empty files can be signed
+        empty = os.path.join(temp_dir, 'empty.bin')
+        open(empty, 'wb').close()
+        assert nx.sign_file(empty, priv, "test_password123"), "Signing an empty file failed"
+        assert nx.verify_file(empty, empty + '.sig', pub) is True, "Empty file signature rejected"
+
+    def test_signature_key_type_checks(self, temp_dir):
+        """RSA keys cannot sign and Ed25519 keys cannot encrypt (clear errors, no output)"""
+        rsa_dir = os.path.join(temp_dir, 'rsa')
+        rsa_nx, rsa_pub, rsa_priv = self._setup_keys(rsa_dir)
+        nx, ed_pub, ed_priv = self._signing_setup(os.path.join(temp_dir, 'ed'))
+        src = os.path.join(temp_dir, 'f.bin')
+        with open(src, 'wb') as f:
+            f.write(b"content")
+
+        out = os.path.join(temp_dir, 'rsa.sig')
+        assert nx.sign_file(src, rsa_priv, "test_password123", out) is False, "RSA key was accepted for signing"
+        assert not os.path.exists(out), "Signature written with an RSA key"
+        assert nx.sign_file(src, ed_priv, "test_password123"), "Signing failed"
+        assert nx.verify_file(src, src + '.sig', rsa_pub) is False, "RSA key accepted for verification"
+        assert nx.encrypt_data(b"x", ed_pub) is None, "Ed25519 key accepted for encryption"
+        encrypted = rsa_nx.encrypt_data(b"x", rsa_pub)
+        assert nx.decrypt_data(bytes.fromhex(encrypted), ed_priv, "test_password123") is None, \
+            "Ed25519 key accepted for decryption"
+
+    def test_signature_all_key_formats(self, temp_dir):
+        """Signing keys work in every format, with auto-detection and OpenSSH public keys"""
+        src = os.path.join(temp_dir, 'f.bin')
+        with open(src, 'wb') as f:
+            f.write(b"formats")
+        for key_format in (KeyFormat.PEM, KeyFormat.DER, KeyFormat.JSON, KeyFormat.SSH):
+            sub = os.path.join(temp_dir, key_format.lower())
+            nx, pub, priv = self._signing_setup(sub, key_format)
+            sig = os.path.join(sub, 'f.sig')
+            assert nx.sign_file(src, priv, "test_password123", sig), f"Signing failed with {key_format} keys"
+            assert nx.verify_file(src, sig, pub), f"Verification failed with {key_format} keys"
+            if key_format != KeyFormat.SSH:
+                assert nx.sign_file(src, priv, "test_password123", sig, key_format), \
+                    f"Explicit {key_format} format rejected"
+
+        pem_dir = os.path.join(temp_dir, 'pem')
+        pem_pub = open(os.path.join(pem_dir, 'signing_public_key.pem'), 'rb').read()
+        ssh_pub = KeyConverter.convert_public_key(pem_pub, KeyFormat.PEM, KeyFormat.SSH)
+        assert ssh_pub.startswith(b"ssh-ed25519 "), "Ed25519 public key not exported as ssh-ed25519"
+        ssh_path = os.path.join(temp_dir, 'converted.ssh')
+        with open(ssh_path, 'wb') as f:
+            f.write(ssh_pub)
+        assert nx.verify_file(src, os.path.join(pem_dir, 'f.sig'), ssh_path), \
+            "Signature not verifiable with the converted OpenSSH key"
+
+    def test_sign_data_api(self, temp_dir):
+        """Raw bytes can be signed and verified"""
+        nx, pub, priv = self._signing_setup(temp_dir)
+        for payload in (b"hello", b"", os.urandom(10000)):
+            signature = nx.sign_data(payload, priv, "test_password123")
+            assert signature, "sign_data failed"
+            assert nx.verify_data(payload, signature, pub) is True, "Valid data signature rejected"
+            assert nx.verify_data(payload + b"!", signature, pub) is False, "Modified data accepted"
+        assert nx.sign_data(b"x", priv, "wrong") is None, "sign_data worked with a wrong password"
+
+    def test_signature_cli(self, temp_dir):
+        """signkeygen / sign / verify through the CLI handlers, with exit-code semantics"""
+        keys = os.path.join(temp_dir, 'keys')
+        result, _ = self._run_cli(dict(command='signkeygen', output=keys, password="test_password123", format='PEM'))
+        assert result is True, "signkeygen failed"
+        priv = os.path.join(keys, 'signing_private_key.pem')
+        pub = os.path.join(keys, 'signing_public_key.pem')
+        src = os.path.join(temp_dir, 'cli.txt')
+        with open(src, 'wb') as f:
+            f.write(b"cli content")
+
+        result, _ = self._run_cli(dict(command='sign', input=src, output=None, key=priv,
+                                       password="test_password123", key_format=None))
+        assert result is True and os.path.exists(src + '.sig'), "sign failed"
+        result, _ = self._run_cli(dict(command='verify', input=src, signature=None, key=pub, key_format=None))
+        assert result is True, "verify rejected a valid signature"
+
+        with open(src, 'wb') as f:
+            f.write(b"cli content, modified")
+        result, _ = self._run_cli(dict(command='verify', input=src, signature=None, key=pub, key_format=None))
+        assert result is False, "verify accepted a modified file"
+        result, _ = self._run_cli(dict(command='sign', input=src, output=None, key=priv,
+                                       password="wrong", key_format=None))
+        assert result is False, "sign accepted a wrong password"
 
 def main():
     """Main entry point for the test runner"""
